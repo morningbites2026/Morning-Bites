@@ -615,7 +615,7 @@ export default function Subscribed() {
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
                       {/* Package selector / label */}
-                      {custPacks.length > 1 ? (
+                      {custPacks.length > 0 ? (
                         <Select
                           value={(selectedCpId[c.id] || custPacks[0]?.id)?.toString()}
                           onValueChange={v => setSelectedCpId(p => ({ ...p, [c.id]: Number(v) }))}

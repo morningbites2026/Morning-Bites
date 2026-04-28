@@ -53,7 +53,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         })(),
         dbGet<MealSkip>('meal_skips'),
-        dbGet<Package>('packages')
+        dbGet<Package>('packages', 'select=*&is_deleted=eq.false')
       ]);
       setCustomers(c);
       setWalkins(w);
@@ -64,7 +64,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setPackages(p);
 
       try {
-        const promo = await dbGet<Promotion>('promotions');
+        const promo = await dbGet<Promotion>('promotions', 'select=*&is_deleted=eq.false');
         setPromotions(promo);
       } catch {
         setPromotions([]);

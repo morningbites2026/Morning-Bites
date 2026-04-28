@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { dbIns, dbUpd, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID } from "@/lib/supabase";
+import { dbIns, dbUpd, dbUpdWhere, logActivity, getActivityLogs, getPromotionHistory, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Plus, MessageCircle, Edit, Trash2, Search, CalendarDays, History, Megaphone, QrCode, Banknote, CreditCard, RefreshCw } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, MessageCircle, Edit, Trash2, Search, CalendarDays, History, Megaphone, QrCode, Banknote, CreditCard, RefreshCw, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Walkins() {
@@ -34,6 +35,8 @@ export default function Walkins() {
 
   const [historyWalkin, setHistoryWalkin] = useState<any>(null);
   const [historyLogs, setHistoryLogs] = useState<ActivityLog[]>([]);
+  const [historyPromoLogs, setHistoryPromoLogs] = useState<ActivityLog[]>([]);
+  const [historyTab, setHistoryTab] = useState<'activity' | 'promotions'>('activity');
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const filteredWalkins = walkins.filter(w =>
@@ -206,7 +209,18 @@ export default function Walkins() {
 
     // Log in background (no await needed)
     const cust = getCustomerForPhone(promoteWalkin.phone);
-    logActivity(cust?.id || null, 'promotion_sent', `Promotion sent: ${promo?.title || 'General promotion'}`);
+    logActivity(
+      cust?.id || null,
+      'promotion_sent',
+      `Sent to ${promoteWalkin.name} (${promoteWalkin.phone}): ${promo?.title || 'General promotion'}`,
+      {
+        promotion_id: promo?.id || null,
+        promotion_title: promo?.title || null,
+        walkin_id: promoteWalkin.id,
+        walkin_name: promoteWalkin.name,
+        walkin_phone: promoteWalkin.phone,
+      }
+    );
 
     setPromoteWalkin(null);
   };
@@ -215,13 +229,30 @@ export default function Walkins() {
   const handleOpenHistory = async (w: any) => {
     setHistoryWalkin(w);
     setHistoryLoading(true);
+    setHistoryTab('activity');
+
     const cust = getCustomerForPhone(w.phone);
+    let logs: ActivityLog[] = [];
     if (cust) {
-      const logs = await getActivityLogs(cust.id);
-      setHistoryLogs(logs);
-    } else {
-      setHistoryLogs([]);
+      logs = await getActivityLogs(cust.id);
     }
+
+    const allPromoLogs = await getPromotionHistory();
+    const walkinPromoLogs = allPromoLogs.filter(l =>
+      l.meta?.walkin_phone === w.phone ||
+      l.meta?.walkin_id === w.id ||
+      (!cust && l.description?.includes(w.phone))
+    );
+
+    const custPromoLogs = logs.filter(l => l.action === 'promotion_sent');
+    const merged = [...custPromoLogs];
+    walkinPromoLogs.forEach(wl => {
+      if (!merged.some(cl => cl.id === wl.id)) merged.push(wl);
+    });
+    merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    setHistoryLogs(logs.filter(l => l.action !== 'promotion_sent'));
+    setHistoryPromoLogs(merged);
     setHistoryLoading(false);
   };
 
@@ -541,29 +572,59 @@ export default function Walkins() {
 
       {/* History Modal */}
       <Dialog open={!!historyWalkin} onOpenChange={v => !v && setHistoryWalkin(null)}>
-        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif flex items-center gap-2">
               <History className="w-5 h-5" /> {historyWalkin?.name} — History
             </DialogTitle>
           </DialogHeader>
-          <div className="py-4 space-y-2">
-            {historyLoading ? (
-              <div className="text-sm text-muted-foreground text-center py-4">Loading...</div>
-            ) : historyLogs.length === 0 ? (
-              <div className="text-sm text-muted-foreground text-center py-4">No history yet.</div>
-            ) : (
-              historyLogs.map(log => (
-                <div key={log.id} className="p-3 bg-muted/30 rounded-xl border border-border">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="font-semibold text-sm capitalize">{log.action.replace(/_/g, ' ')}</div>
-                    <div className="text-[10px] text-muted-foreground text-right shrink-0">{formatIST(log.created_at)}</div>
-                  </div>
-                  {log.description && <div className="text-xs text-muted-foreground mt-1">{log.description}</div>}
-                </div>
-              ))
-            )}
-          </div>
+          {historyLoading ? (
+            <div className="text-sm text-muted-foreground text-center py-8">Loading...</div>
+          ) : (
+            <Tabs value={historyTab} onValueChange={v => setHistoryTab(v as any)} className="mt-2">
+              <TabsList className="grid grid-cols-2 w-full rounded-xl">
+                <TabsTrigger value="activity" className="rounded-lg text-xs font-bold">
+                  <Activity className="w-3.5 h-3.5 mr-1.5" /> Trail Report ({historyLogs.length})
+                </TabsTrigger>
+                <TabsTrigger value="promotions" className="rounded-lg text-xs font-bold">
+                  <Megaphone className="w-3.5 h-3.5 mr-1.5" /> Promotions ({historyPromoLogs.length})
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="activity" className="mt-3 space-y-2">
+                {historyLogs.length === 0 ? (
+                  <div className="text-sm text-muted-foreground text-center py-6">No activity recorded yet.</div>
+                ) : (
+                  historyLogs.map(log => (
+                    <div key={log.id} className="p-3 bg-muted/30 rounded-xl border border-border">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="font-semibold text-sm capitalize">{log.action.replace(/_/g, ' ')}</div>
+                        <div className="text-[10px] text-muted-foreground text-right shrink-0">{formatIST(log.created_at)}</div>
+                      </div>
+                      {log.description && <div className="text-xs text-muted-foreground mt-1">{log.description}</div>}
+                    </div>
+                  ))
+                )}
+              </TabsContent>
+
+              <TabsContent value="promotions" className="mt-3 space-y-2">
+                {historyPromoLogs.length === 0 ? (
+                  <div className="text-sm text-muted-foreground text-center py-6">No promotions sent yet.</div>
+                ) : (
+                  historyPromoLogs.map(log => (
+                    <div key={log.id} className="p-3 bg-muted/30 rounded-xl border border-border">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="font-semibold text-sm">
+                          {log.meta?.promotion_title || log.description?.split(': ').pop() || 'Promotion'}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground text-right shrink-0">{formatIST(log.created_at)}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
         </DialogContent>
       </Dialog>
     </div>

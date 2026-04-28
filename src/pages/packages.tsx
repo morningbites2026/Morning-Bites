@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Package as PackageIcon, Edit } from "lucide-react";
+import { Plus, Package as PackageIcon, Edit, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Packages() {
@@ -63,6 +63,17 @@ export default function Packages() {
         toast({ title: "Package added" });
       }
       setIsModalOpen(false);
+      refresh();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: err.message });
+    }
+  };
+
+  const handleDelete = async (pkg: any) => {
+    if (!window.confirm(`Delete "${pkg.name}"? It will be hidden from all package lists.`)) return;
+    try {
+      await dbUpd('packages', pkg.id, { is_deleted: true });
+      toast({ title: "Package deleted" });
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -137,6 +148,15 @@ export default function Packages() {
                       onClick={() => openEdit(pkg)}
                     >
                       <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 rounded-full border-red-200 text-red-600 bg-red-50 hover:bg-red-100"
+                      onClick={() => handleDelete(pkg)}
+                      title="Delete package"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>

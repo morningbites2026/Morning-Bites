@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { dbUpd, dbDel, formatIST, UPI_ID } from "@/lib/supabase";
+import { dbUpd, dbDel, formatIST, getISTDateDisplay, UPI_ID } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Edit, Trash2, CalendarDays, ReceiptText, QrCode, Banknote, CreditCard, Plus, Minus } from "lucide-react";
 
@@ -26,7 +26,7 @@ export default function BillReports() {
   const [editItems, setEditItems] = useState<Array<{ name: string; option: string; price: number; qty: number }>>([]);
   const [editQrOpen, setEditQrOpen] = useState(false);
 
-  const today = new Date().toLocaleDateString('en-IN');
+  const today = getISTDateDisplay();
 
   const getWeekStart = () => {
     const d = new Date();

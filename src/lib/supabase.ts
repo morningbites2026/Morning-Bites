@@ -131,8 +131,9 @@ export interface Package {
   name: string;
   description: string | null;
   price: number;
-  meals_count: number; // number of meals in this package (defaults to 10)
+  meals_count: number;
   is_active: boolean;
+  is_deleted: boolean;
   created_at: string;
 }
 
@@ -164,6 +165,7 @@ export interface Promotion {
   title: string;
   description: string;
   is_active: boolean;
+  is_deleted: boolean;
   created_at: string;
 }
 
@@ -271,6 +273,14 @@ export async function logActivity(customerId: number | null, action: string, des
 export async function getActivityLogs(customerId: number): Promise<ActivityLog[]> {
   try {
     return await dbGet<ActivityLog>('activity_logs', `select=*&customer_id=eq.${customerId}`);
+  } catch {
+    return [];
+  }
+}
+
+export async function getPromotionHistory(): Promise<ActivityLog[]> {
+  try {
+    return await dbGet<ActivityLog>('activity_logs', `select=*&action=eq.promotion_sent`);
   } catch {
     return [];
   }
