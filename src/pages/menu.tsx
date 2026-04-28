@@ -281,11 +281,13 @@ export default function Menu() {
                     </div>
                     <div className="w-24">
                       <Input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         placeholder="Price"
                         value={opt.price}
                         onChange={e => {
-                          const n = [...options]; n[i] = { ...n[i], price: e.target.value }; setOptions(n);
+                          const val = e.target.value.replace(/[^0-9.]/g, '');
+                          const n = [...options]; n[i] = { ...n[i], price: val }; setOptions(n);
                         }}
                         className="h-8 text-sm"
                       />

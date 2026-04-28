@@ -288,60 +288,61 @@ export default function BillReports() {
 
             <div className="space-y-2">
               <Label>Items</Label>
-              <div className="space-y-2">
-                {editItems.map((it, idx) => (
-                  <div key={idx} className="flex items-center justify-between bg-muted/30 p-2 rounded-lg">
+
+              {/* Legacy items: in bill but no longer in active menu */}
+              {editItems.filter(it => !activeMenuItems.some(m => m.name === it.name)).map((it, _) => {
+                const realIdx = editItems.indexOf(it);
+                return (
+                  <div key={realIdx} className="flex items-center justify-between bg-muted/30 p-2 rounded-lg">
                     <div className="flex-1">
                       <div className="text-sm font-medium">{it.name} ({it.option})</div>
                       <div className="text-xs text-muted-foreground">₹{it.price} each</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(idx, -1)}>
+                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(realIdx, -1)}>
                         <Minus className="w-3 h-3" />
                       </Button>
                       <span className="w-5 text-center font-bold text-sm">{it.qty}</span>
-                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(idx, 1)}>
+                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(realIdx, 1)}>
                         <Plus className="w-3 h-3" />
                       </Button>
                     </div>
                   </div>
+                );
+              })}
+
+              {/* Menu items — same layout as billing screen */}
+              <div className="flex flex-col gap-3 max-h-72 overflow-y-auto pr-1">
+                {activeMenuItems.map(item => (
+                  <div key={item.id} className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">{item.name}</span>
+                    </div>
+                    {item.options.map((opt, optIdx) => {
+                      const existingIdx = editItems.findIndex(it => it.name === item.name && it.option === opt.name);
+                      const qty = existingIdx >= 0 ? editItems[existingIdx].qty : 0;
+                      return (
+                        <div key={optIdx} className="flex items-center justify-between bg-muted/30 p-2 rounded-md">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">{opt.name}</span>
+                            <span className="text-xs text-muted-foreground">₹{opt.price}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(existingIdx, -1)} disabled={qty === 0}>
+                              <Minus className="w-3 h-3" />
+                            </Button>
+                            <span className="w-5 text-center font-bold text-sm">{qty}</span>
+                            <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleAddMenuItemToEdit(item, optIdx)}>
+                              <Plus className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ))}
               </div>
             </div>
-
-            {activeMenuItems.length > 0 && (
-              <div className="space-y-2">
-                <Label>Add Items</Label>
-                <div className="flex flex-col gap-2 max-h-56 overflow-y-auto pr-1">
-                  {activeMenuItems.map(item => (
-                    <div key={item.id} className="rounded-xl border border-border overflow-hidden">
-                      <div className="px-3 py-1.5 bg-muted/40 text-xs font-bold text-muted-foreground">{item.name}</div>
-                      {item.options.map((opt, optIdx) => {
-                        const existingIdx = editItems.findIndex(it => it.name === item.name && it.option === opt.name);
-                        const qty = existingIdx >= 0 ? editItems[existingIdx].qty : 0;
-                        return (
-                          <div key={optIdx} className="flex items-center justify-between px-3 py-2 bg-card border-t border-border/50">
-                            <div>
-                              <span className="text-sm font-medium">{opt.name}</span>
-                              <span className="text-xs text-muted-foreground ml-2">₹{opt.price}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(existingIdx, -1)} disabled={qty === 0}>
-                                <Minus className="w-3 h-3" />
-                              </Button>
-                              <span className="w-5 text-center font-bold text-sm">{qty}</span>
-                              <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleAddMenuItemToEdit(item, optIdx)}>
-                                <Plus className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className="flex justify-between items-center py-2 border-t border-border">
               <Label className="text-muted-foreground">New Total</Label>

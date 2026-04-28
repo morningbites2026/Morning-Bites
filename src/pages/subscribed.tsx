@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage } from "@/lib/supabase";
+import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Check, Undo2, SkipForward, RefreshCw, Trash2, Edit, MessageCircle, ChevronLeft, ChevronRight, History, Plus, Banknote, CreditCard, QrCode, XCircle } from "lucide-react";
+import { Check, Undo2, SkipForward, RefreshCw, Trash2, Edit, MessageCircle, ChevronLeft, ChevronRight, History, Plus, Banknote, CreditCard, QrCode, Ban } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +48,13 @@ const buildPackDoneMsg = (name: string, total: number, price: number) =>
 const buildActiveSubMsg = (name: string, pkgName: string, total: number, price: number, startDate: string) =>
   `Hello ${name},\n\nWelcome to Morning Bites! 🌿\n\nYour ${pkgName} subscription is now active!\n\n📦 Pack: ${total} meals\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
 
+const buildActiveSubMsgMulti = (name: string, pkgs: Package[], startDate: string) => {
+  const pkgsList = pkgs.map((p, i) => `${i + 1}. ${p.name} — ${p.meals_count ?? 10} meals — ₹${p.price}`).join('\n');
+  const totalPrice = pkgs.reduce((s, p) => s + p.price, 0);
+  const totalMeals = pkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0);
+  return `Hello ${name},\n\nWelcome to Morning Bites! 🌿\n\nYour subscriptions are now active!\n\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+};
+
 export default function Subscribed() {
   const { customers, packages, walkins, mealSkips, customerPackages, refresh, searchQuery } = useStore();
   const { toast } = useToast();
@@ -79,7 +86,7 @@ export default function Subscribed() {
   const [addModal, setAddModal] = useState(false);
   const [addName, setAddName] = useState("");
   const [addPhone, setAddPhone] = useState("");
-  const [addPkgId, setAddPkgId] = useState("");
+  const [addPkgIds, setAddPkgIds] = useState<number[]>([]);
   const [addPayMode, setAddPayMode] = useState("cash");
   const [addCash, setAddCash] = useState("");
   const [addQrOpen, setAddQrOpen] = useState(false);
@@ -126,8 +133,8 @@ export default function Subscribed() {
     return true;
   });
 
-  const selectedAddPkg = activePackages.find(p => p.id.toString() === addPkgId);
-  const addTotal = selectedAddPkg?.price || 0;
+  const selectedAddPkgs = activePackages.filter(p => addPkgIds.includes(p.id));
+  const addTotal = selectedAddPkgs.reduce((s, p) => s + p.price, 0);
   const addCashNum = Number(addCash) || 0;
   const addChange = addCashNum - addTotal;
   const addUpiUrl = `upi://pay?pa=${UPI_ID}&pn=Morning+Bites&am=${addTotal}&cu=INR`;
@@ -138,8 +145,8 @@ export default function Subscribed() {
 
   // ─── Add customer ─────────────────────────────────────────────────────────
   const handleAddCustomer = async () => {
-    if (!addName.trim() || !addPhone.trim() || !addPkgId) {
-      toast({ variant: "destructive", description: "All fields required" });
+    if (!addName.trim() || !addPhone.trim() || addPkgIds.length === 0) {
+      toast({ variant: "destructive", description: "Name, phone and at least one package are required" });
       return;
     }
     if (addPayMode === 'scanpay' && !addQrOpen) {
@@ -147,12 +154,14 @@ export default function Subscribed() {
       return;
     }
 
-    const pkg = selectedAddPkg;
+    const primaryPkg = selectedAddPkgs[0];
     const today = getISTISODate();
     const dateDisplay = formatISTDate(today);
-    const mealsCount = pkg?.meals_count ?? 10;
+    const primaryMeals = primaryPkg?.meals_count ?? 10;
 
-    const msg = buildActiveSubMsg(addName, pkg?.name || 'Sprouts Salad', mealsCount, pkg?.price || 0, dateDisplay);
+    const msg = selectedAddPkgs.length === 1
+      ? buildActiveSubMsg(addName, primaryPkg?.name || 'Sprouts Salad', primaryMeals, primaryPkg?.price || 0, dateDisplay)
+      : buildActiveSubMsgMulti(addName, selectedAddPkgs, dateDisplay);
     window.open(`https://wa.me/91${addPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 
     try {
@@ -161,42 +170,46 @@ export default function Subscribed() {
 
       if (existingCust) {
         await dbUpd('customers', existingCust.id, {
-          name: addName, status: 'active', used: 0, total: mealsCount,
+          name: addName, status: 'active', used: 0, total: primaryMeals,
           renew_count: existingCust.renew_count + 1,
           last_renewed: today, pack_start_date: today,
-          package_id: Number(addPkgId), payment_mode: addPayMode
+          package_id: primaryPkg?.id || null, payment_mode: addPayMode
         });
         custId = existingCust.id;
+        await dbUpdWhere('meal_skips', `customer_id=eq.${custId}&skip_date=gte.${today}&unskipped=eq.false`, { unskipped: true });
       } else {
         const res = await dbIns<any>('customers', {
           name: addName, phone: addPhone, type: 'subscribed',
-          total: mealsCount, used: 0, join_date: today, renew_count: 0,
+          total: primaryMeals, used: 0, join_date: today, renew_count: 0,
           pack_start_date: today, status: 'active', is_deleted: false,
-          preferred_days: [], package_id: Number(addPkgId), payment_mode: addPayMode
+          preferred_days: [], package_id: primaryPkg?.id || null, payment_mode: addPayMode
         });
         custId = res[0]?.id || null;
         await dbIns('walkins', { name: addName, phone: addPhone, visit_date: today, is_deleted: false });
       }
 
       if (custId) {
-        await dbIns('customer_packages', {
-          customer_id: custId,
-          package_id: Number(addPkgId),
-          used: 0,
-          total: mealsCount,
-          pack_start_date: today,
-          payment_mode: addPayMode,
-          status: 'active',
-          renew_count: existingCust ? existingCust.renew_count + 1 : 0,
-        });
+        for (const pkg of selectedAddPkgs) {
+          await dbIns('customer_packages', {
+            customer_id: custId,
+            package_id: pkg.id,
+            used: 0,
+            total: pkg.meals_count ?? 10,
+            pack_start_date: today,
+            payment_mode: addPayMode,
+            status: 'active',
+            renew_count: existingCust ? existingCust.renew_count + 1 : 0,
+          });
+        }
       }
 
-      logActivity(custId, existingCust ? 'renewed' : 'subscribed', `${existingCust ? 'Renewed' : 'Subscribed'} to ${pkg?.name || 'package'} for ₹${pkg?.price || 0}. Payment: ${addPayMode}`);
+      const pkgNames = selectedAddPkgs.map(p => p.name).join(', ');
+      logActivity(custId, existingCust ? 'renewed' : 'subscribed', `${existingCust ? 'Renewed' : 'Subscribed'} to ${pkgNames} for ₹${addTotal}. Payment: ${addPayMode}`);
 
       toast({ title: existingCust ? "Pack renewed!" : "Customer added and subscribed!" });
       setAddModal(false);
       setAddQrOpen(false);
-      setAddName(""); setAddPhone(""); setAddPkgId(""); setAddPayMode("cash"); setAddCash("");
+      setAddName(""); setAddPhone(""); setAddPkgIds([]); setAddPayMode("cash"); setAddCash("");
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -548,7 +561,7 @@ export default function Subscribed() {
         <Button
           onClick={() => {
             setAddModal(true); setAddQrOpen(false); setAddName(""); setAddPhone("");
-            setAddPkgId(activePackages[0]?.id.toString() || ""); setAddPayMode("cash"); setAddCash("");
+            setAddPkgIds([]); setAddPayMode("cash"); setAddCash("");
           }}
           className="rounded-full shadow-md font-bold px-4"
         >
@@ -713,8 +726,8 @@ export default function Subscribed() {
                     )}
                   </div>
 
-                  <div className="pt-2">
-                    <div className="flex gap-3 mb-3">
+                  <div className="pt-2 flex flex-col gap-2">
+                    <div className="flex gap-3">
                       <Button
                         onClick={() => handleUseMeal(c, cp)}
                         disabled={isDone || c.status === 'cancelled'}
@@ -732,16 +745,18 @@ export default function Subscribed() {
                       </Button>
                     </div>
 
-                    <div className="flex gap-2 flex-wrap">
-                      {isDone ? (
-                        <Button
-                          onClick={() => handleRenew(c, cp)}
-                          disabled={c.status === 'cancelled'}
-                          className="flex-1 h-10 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/90 font-bold"
-                        >
-                          <RefreshCw className="w-4 h-4 mr-1.5" /> Renew
-                        </Button>
-                      ) : (
+                    {isDone && (
+                      <Button
+                        onClick={() => handleRenew(c, cp)}
+                        disabled={c.status === 'cancelled'}
+                        className="w-full h-10 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/90 font-bold"
+                      >
+                        <RefreshCw className="w-4 h-4 mr-1.5" /> Renew
+                      </Button>
+                    )}
+
+                    <div className="flex gap-2">
+                      {!isDone && (
                         <Button
                           variant="outline"
                           onClick={() => setNotifyModal({ open: true, customer: c, type: isLow ? 'low' : 'meal', cp })}
@@ -774,11 +789,11 @@ export default function Subscribed() {
                       {c.status !== 'cancelled' && (
                         <Button
                           variant="outline"
-                          className="w-10 h-10 rounded-lg p-0 border-red-200 text-red-600 bg-red-50 hover:bg-red-100"
+                          className="w-10 h-10 rounded-lg p-0 border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100"
                           onClick={() => handleCancel(c, cp)}
                           title="Cancel Subscription"
                         >
-                          <XCircle className="w-4 h-4" />
+                          <Ban className="w-4 h-4" />
                         </Button>
                       )}
 
@@ -828,24 +843,34 @@ export default function Subscribed() {
                   <Input type="tel" placeholder="10-digit number" value={addPhone} onChange={e => setAddPhone(e.target.value)} className="h-12 rounded-xl font-mono" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Package</Label>
-                  <Select value={addPkgId} onValueChange={setAddPkgId}>
-                    <SelectTrigger className="h-12 rounded-xl">
-                      <SelectValue placeholder="Choose a package" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activePackages.map(p => (
-                        <SelectItem key={p.id} value={p.id.toString()}>
-                          {p.name} — {p.meals_count ?? 10} meals — ₹{p.price}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Package(s) — tap to select one or more</Label>
+                  <div className="space-y-2">
+                    {activePackages.map(p => {
+                      const selected = addPkgIds.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setAddPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                          className={cn(
+                            "w-full text-left p-3 rounded-xl border-2 transition-all flex justify-between items-center",
+                            selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+                          )}
+                        >
+                          <div>
+                            <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
+                            <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
+                          </div>
+                          <span className={cn("font-bold", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                {selectedAddPkg && (
+                {selectedAddPkgs.length > 0 && (
                   <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-sm flex justify-between">
-                    <span>{selectedAddPkg.name} ({selectedAddPkg.meals_count ?? 10} meals)</span>
-                    <span className="font-bold text-primary">₹{selectedAddPkg.price}</span>
+                    <span>{selectedAddPkgs.length} pack{selectedAddPkgs.length > 1 ? 's' : ''} — {selectedAddPkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0)} meals total</span>
+                    <span className="font-bold text-primary">₹{addTotal}</span>
                   </div>
                 )}
                 <div className="space-y-2">

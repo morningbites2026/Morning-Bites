@@ -91,7 +91,6 @@ export default function Billing() {
       setQuantities({});
       setCashReceived("");
       setShowQrModal(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });

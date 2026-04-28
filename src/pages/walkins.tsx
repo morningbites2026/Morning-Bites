@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { dbIns, dbUpd, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID } from "@/lib/supabase";
+import { dbIns, dbUpd, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, MessageCircle, Edit, Trash2, Search, CalendarDays, History, Megaphone, QrCode, Banknote, CreditCard, RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function Walkins() {
   const { walkins, customers, packages, promotions, refresh, searchQuery } = useStore();
@@ -24,7 +24,7 @@ export default function Walkins() {
   const [phone, setPhone] = useState("");
 
   const [subWalkin, setSubWalkin] = useState<any>(null);
-  const [subPkgId, setSubPkgId] = useState("");
+  const [subPkgIds, setSubPkgIds] = useState<number[]>([]);
   const [subPayMode, setSubPayMode] = useState<any>("cash");
   const [subCash, setSubCash] = useState("");
   const [subQrOpen, setSubQrOpen] = useState(false);
@@ -45,8 +45,8 @@ export default function Walkins() {
   const activePromotions = promotions.filter(p => p.is_active);
   const getCustomerForPhone = (ph: string) => customers.find(c => c.phone === ph);
 
-  const selectedPkg = activePackages.find(p => p.id.toString() === subPkgId);
-  const subTotal = selectedPkg?.price || 0;
+  const selectedPkgs = activePackages.filter(p => subPkgIds.includes(p.id));
+  const subTotal = selectedPkgs.reduce((s, p) => s + p.price, 0);
   const subCashNum = Number(subCash) || 0;
   const subChange = subCashNum - subTotal;
   const upiUrl = `upi://pay?pa=${UPI_ID}&pn=Morning+Bites&am=${subTotal}&cu=INR`;
@@ -84,7 +84,7 @@ export default function Walkins() {
   // ─── Subscribe / Renew ───────────────────────────────────────────────────
   const handleOpenSubscribe = (w: any) => {
     setSubWalkin(w);
-    if (activePackages.length > 0) setSubPkgId(activePackages[0].id.toString());
+    setSubPkgIds([]);
     setSubPayMode("cash");
     setSubCash("");
     setSubQrOpen(false);
@@ -92,8 +92,8 @@ export default function Walkins() {
   };
 
   const handleSubscribe = async () => {
-    if (!subWalkin || !subPkgId) {
-      toast({ variant: "destructive", description: "Please select a package" });
+    if (!subWalkin || subPkgIds.length === 0) {
+      toast({ variant: "destructive", description: "Please select at least one package" });
       return;
     }
     if (subPayMode === 'scanpay' && !subQrOpen) {
@@ -101,13 +101,19 @@ export default function Walkins() {
       return;
     }
 
-    const pkg = activePackages.find(p => p.id.toString() === subPkgId);
+    const primaryPkg = selectedPkgs[0];
     const existingCust = getCustomerForPhone(subWalkin.phone);
     const today = getISTISODate();
     const dateDisplay = formatISTDate(today);
-    const mealsCount = pkg?.meals_count ?? 10;
+    const primaryMeals = primaryPkg?.meals_count ?? 10;
 
-    const msg = `Hello ${subWalkin.name},\n\nWelcome to Morning Bites! 🌿\n\nYour ${pkg?.name || 'Sprouts Salad'} subscription is now active!\n\n📦 Pack: ${mealsCount} meals\n💰 Amount: ₹${pkg?.price || 0}\n📅 Start date: ${dateDisplay}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+    const msg = selectedPkgs.length === 1
+      ? `Hello ${subWalkin.name},\n\nWelcome to Morning Bites! 🌿\n\nYour ${primaryPkg?.name || 'Sprouts Salad'} subscription is now active!\n\n📦 Pack: ${primaryMeals} meals\n💰 Amount: ₹${primaryPkg?.price || 0}\n📅 Start date: ${dateDisplay}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`
+      : (() => {
+          const pkgsList = selectedPkgs.map((p, i) => `${i + 1}. ${p.name} — ${p.meals_count ?? 10} meals — ₹${p.price}`).join('\n');
+          const totalMeals = selectedPkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0);
+          return `Hello ${subWalkin.name},\n\nWelcome to Morning Bites! 🌿\n\nYour subscriptions are now active!\n\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${subTotal}\n📅 Start date: ${dateDisplay}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+        })();
     window.open(`https://wa.me/91${subWalkin.phone}?text=${encodeURIComponent(msg)}`, '_blank');
 
     try {
@@ -117,11 +123,11 @@ export default function Walkins() {
         await dbUpd('customers', existingCust.id, {
           status: 'active',
           used: 0,
-          total: mealsCount,
+          total: primaryMeals,
           renew_count: existingCust.renew_count + 1,
           last_renewed: today,
           pack_start_date: today,
-          package_id: Number(subPkgId),
+          package_id: primaryPkg?.id || null,
           payment_mode: subPayMode
         });
         custId = existingCust.id;
@@ -130,7 +136,7 @@ export default function Walkins() {
           name: subWalkin.name,
           phone: subWalkin.phone,
           type: 'subscribed',
-          total: mealsCount,
+          total: primaryMeals,
           used: 0,
           join_date: today,
           renew_count: 0,
@@ -138,30 +144,39 @@ export default function Walkins() {
           status: 'active',
           is_deleted: false,
           preferred_days: [],
-          package_id: Number(subPkgId),
+          package_id: primaryPkg?.id || null,
           payment_mode: subPayMode
         });
         custId = res[0]?.id || null;
       }
 
       if (custId) {
-        await dbIns('customer_packages', {
-          customer_id: custId,
-          package_id: Number(subPkgId),
-          used: 0,
-          total: mealsCount,
-          pack_start_date: today,
-          payment_mode: subPayMode,
-          status: 'active',
-          renew_count: existingCust ? existingCust.renew_count + 1 : 0,
-        });
+        for (const pkg of selectedPkgs) {
+          await dbIns('customer_packages', {
+            customer_id: custId,
+            package_id: pkg.id,
+            used: 0,
+            total: pkg.meals_count ?? 10,
+            pack_start_date: today,
+            payment_mode: subPayMode,
+            status: 'active',
+            renew_count: existingCust ? existingCust.renew_count + 1 : 0,
+          });
+        }
       }
 
-      logActivity(custId, existingCust ? 'renewed' : 'subscribed', `${existingCust ? 'Renewed' : 'Subscribed'} to ${pkg?.name || 'package'} for ₹${pkg?.price || 0}. Payment: ${subPayMode}`);
+      // Reset future meal skips on renewal
+      if (existingCust && custId) {
+        await dbUpdWhere('meal_skips', `customer_id=eq.${custId}&skip_date=gte.${today}&unskipped=eq.false`, { unskipped: true });
+      }
+
+      const pkgNames = selectedPkgs.map(p => p.name).join(', ');
+      logActivity(custId, existingCust ? 'renewed' : 'subscribed', `${existingCust ? 'Renewed' : 'Subscribed'} to ${pkgNames} for ₹${subTotal}. Payment: ${subPayMode}`);
 
       toast({ title: existingCust ? "Pack renewed successfully!" : "Subscribed successfully!" });
       setIsSubModalOpen(false);
       setSubQrOpen(false);
+      setSubPkgIds([]);
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -353,6 +368,23 @@ export default function Walkins() {
                 <span>WhatsApp will open immediately on save to send a welcome message.</span>
               </div>
             )}
+            {editingId && (() => {
+              const editingWalkin = walkins.find(w => w.id === editingId);
+              const cust = editingWalkin ? getCustomerForPhone(editingWalkin.phone) : null;
+              if (!cust) return null;
+              return (
+                <Button
+                  variant="outline"
+                  className="w-full h-10 rounded-xl border-dashed border-primary/40 text-primary hover:bg-primary/5"
+                  onClick={() => {
+                    setIsWalkinModalOpen(false);
+                    if (editingWalkin) handleOpenSubscribe(editingWalkin);
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Add Another Package
+                </Button>
+              );
+            })()}
           </div>
           <DialogFooter>
             <Button onClick={handleSaveWalkin} className="w-full h-14 text-lg rounded-xl shadow-lg font-bold">
@@ -394,29 +426,35 @@ export default function Walkins() {
                 )}
 
                 <div className="space-y-2">
-                  <Label className="text-muted-foreground font-bold uppercase tracking-wider text-xs">Select Package</Label>
-                  <Select value={subPkgId} onValueChange={setSubPkgId}>
-                    <SelectTrigger className="h-14 rounded-xl text-base px-4">
-                      <SelectValue placeholder="Choose a package" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl">
-                      {activePackages.map(p => (
-                        <SelectItem key={p.id} value={p.id.toString()} className="rounded-lg py-3">
-                          <div className="flex justify-between items-center w-full gap-4">
-                            <span className="font-bold">{p.name}</span>
-                            <span className="text-muted-foreground text-xs">{p.meals_count ?? 10} meals</span>
-                            <span className="text-primary font-bold">₹{p.price}</span>
+                  <Label className="text-muted-foreground font-bold uppercase tracking-wider text-xs">Package(s) — tap to select one or more</Label>
+                  <div className="space-y-2">
+                    {activePackages.map(p => {
+                      const selected = subPkgIds.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setSubPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                          className={cn(
+                            "w-full text-left p-3 rounded-xl border-2 transition-all flex justify-between items-center",
+                            selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+                          )}
+                        >
+                          <div>
+                            <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
+                            <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
                           </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                          <span className={cn("font-bold", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {selectedPkg && (
-                  <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-sm">
-                    <span className="font-bold text-primary">₹{selectedPkg.price}</span>
-                    <span className="text-muted-foreground"> — {selectedPkg.name}</span>
+                {selectedPkgs.length > 0 && (
+                  <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-sm flex justify-between">
+                    <span>{selectedPkgs.length} pack{selectedPkgs.length > 1 ? 's' : ''} — {selectedPkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0)} meals total</span>
+                    <span className="font-bold text-primary">₹{subTotal}</span>
                   </div>
                 )}
 
@@ -452,7 +490,7 @@ export default function Walkins() {
                 )}
               </div>
               <DialogFooter>
-                <Button onClick={handleSubscribe} className="w-full h-14 text-lg rounded-xl shadow-lg font-bold">
+                <Button onClick={handleSubscribe} className="w-full h-14 text-lg rounded-xl shadow-lg font-bold" disabled={subPkgIds.length === 0}>
                   {subPayMode === 'scanpay' ? 'Show QR & Activate' : getCustomerForPhone(subWalkin?.phone || '')?.status === 'active' ? 'Renew Pack' : 'Activate Package'}
                 </Button>
               </DialogFooter>

@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useState } from "react";
 import { CalendarDays, AlertCircle, Sun, Sunrise } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getISTISODate } from "@/lib/supabase";
 
 export default function SubDashboard() {
   const { customers, mealSkips } = useStore();
@@ -11,14 +12,14 @@ export default function SubDashboard() {
   const [listTab, setListTab] = useState<'today' | 'tomorrow'>('today');
 
   const today = new Date();
-  const todayIso = today.toISOString().split('T')[0];
+  const todayIso = getISTISODate();
   const dayIndex = (today.getDay() + 6) % 7;
-  const todayStr = today.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const todayStr = today.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' });
 
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowIndex = (tomorrow.getDay() + 6) % 7;
-  const tomorrowIso = tomorrow.toISOString().split('T')[0];
+  const tomorrowIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(tomorrow);
 
   const activeSubs = customers.filter(c => c.status === 'active');
 
