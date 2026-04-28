@@ -40,20 +40,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
-      const [c, w, m, b, po, s, p] = await Promise.all([
+      const [c, w, m, b, po, s] = await Promise.all([
         dbGet<Customer>('customers', 'select=*&is_deleted=eq.false'),
         dbGet<Walkin>('walkins', 'select=*&is_deleted=eq.false'),
         dbGet<MenuItem>('menu_items'),
         dbGet<Bill>('bills'),
         (async () => {
-          try {
-            return await dbGet<Preorder>('preorders');
-          } catch {
-            return [] as Preorder[];
-          }
+          try { return await dbGet<Preorder>('preorders'); } catch { return [] as Preorder[]; }
         })(),
         dbGet<MealSkip>('meal_skips'),
-        dbGet<Package>('packages', 'select=*&is_deleted=eq.false')
       ]);
       setCustomers(c);
       setWalkins(w);
@@ -61,13 +56,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setBills(b);
       setPreorders(po);
       setMealSkips(s);
-      setPackages(p);
 
+      // packages: filter by is_deleted when column exists, fall back to unfiltered
+      try {
+        const p = await dbGet<Package>('packages', 'select=*&is_deleted=eq.false');
+        setPackages(p);
+      } catch {
+        try { setPackages(await dbGet<Package>('packages')); } catch { setPackages([]); }
+      }
+
+      // promotions: filter by is_deleted when column exists, fall back to unfiltered
       try {
         const promo = await dbGet<Promotion>('promotions', 'select=*&is_deleted=eq.false');
         setPromotions(promo);
       } catch {
-        setPromotions([]);
+        try { setPromotions(await dbGet<Promotion>('promotions')); } catch { setPromotions([]); }
       }
 
       try {
