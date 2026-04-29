@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { dbUpd, dbDel, formatIST, getISTDateDisplay, getISTISODate, UPI_ID } from "@/lib/supabase";
+import { dbUpd, dbDel, formatIST, getISTISODate, UPI_ID } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Edit, Trash2, CalendarDays, ReceiptText, QrCode, Banknote, CreditCard, Plus, Minus, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,8 +27,6 @@ export default function BillReports() {
   const [editItems, setEditItems] = useState<Array<{ name: string; option: string; price: number; qty: number }>>([]);
   const [editQrOpen, setEditQrOpen] = useState(false);
   const [editExpandedGroup, setEditExpandedGroup] = useState<number | null>(null);
-
-  const today = getISTDateDisplay();
 
   // Normalize bill_date to ISO (YYYY-MM-DD) — handles both "29/4/2026" and "29/04/2026"
   const billDateToISO = (dateStr: string): string => {
