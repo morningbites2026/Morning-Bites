@@ -114,6 +114,7 @@ export interface Preorder {
   payment_mode: 'cash' | 'upi' | 'scanpay' | null;
   notes: string | null;
   is_fulfilled: boolean;
+  is_cancelled?: boolean;
   created_at: string;
 }
 
@@ -123,6 +124,7 @@ export interface MealSkip {
   skip_date: string;
   notified: boolean;
   unskipped: boolean;
+  customer_package_id?: number | null;
   created_at: string;
 }
 

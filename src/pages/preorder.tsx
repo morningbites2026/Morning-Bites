@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Plus, Minus, ClipboardList, CalendarDays, Banknote, CreditCard, QrCode } from "lucide-react";
+import { Plus, Minus, ClipboardList, CalendarDays, Banknote, CreditCard, QrCode, ChevronDown, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 function isoDate(d: Date) {
   return d.toISOString().split("T")[0];
@@ -31,6 +32,7 @@ export default function Preorder() {
   const [paymentMode, setPaymentMode] = useState<"cash" | "upi" | "scanpay">("cash");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [expandedGroup, setExpandedGroup] = useState<number | null>(null);
 
   const activeMenuItems = menuItems
     .filter((m) => m.is_active)
@@ -113,7 +115,7 @@ export default function Preorder() {
             <Input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-3">
             <div className="space-y-2">
               <Label>Customer Name (Optional)</Label>
               <Input placeholder="Enter name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
@@ -124,54 +126,71 @@ export default function Preorder() {
             </div>
           </div>
 
-          <div className="space-y-4 pt-4 border-t border-border">
+          <div className="space-y-2 pt-4 border-t border-border">
             <Label className="text-base">Menu Items</Label>
-            <div className="flex flex-col gap-3">
-              {activeMenuItems.map((item) => (
-                <div key={item.id} className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm">{item.name}</span>
-                    {(item.category || "daily") === "week_special" && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-bold">
-                        Week Special
-                      </span>
+            <div className="flex flex-col gap-1.5">
+              {activeMenuItems.map((item) => {
+                const itemQty = item.options.reduce((s: number, _: any, idx: number) => s + (quantities[`${item.id}-${idx}`] || 0), 0);
+                const isOpen = expandedGroup === item.id;
+                return (
+                  <div key={item.id} className="rounded-xl border border-border overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedGroup(prev => prev === item.id ? null : item.id)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                        <span className="font-semibold text-sm">{item.name}</span>
+                        {(item.category || "daily") === "week_special" && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-bold">WS</span>
+                        )}
+                      </div>
+                      {itemQty > 0 && (
+                        <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{itemQty} added</span>
+                      )}
+                    </button>
+                    {isOpen && (
+                      <div className="flex flex-col gap-1.5 p-2 bg-background">
+                        {item.options.map((opt, idx) => {
+                          const qty = quantities[`${item.id}-${idx}`] || 0;
+                          return (
+                            <div key={idx} className={cn("flex items-center justify-between bg-muted/20 p-2 rounded-md", qty > 0 && "bg-primary/5")}>
+                              <div className="flex flex-col">
+                                <span className="text-sm font-medium">{opt.name}</span>
+                                <span className="text-xs text-muted-foreground">₹{opt.price}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Button variant="outline" size="icon" className="h-8 w-8 rounded-full border-primary/20 hover:bg-primary/10 hover:text-primary" onClick={() => handleQtyChange(item.id, idx, -1)} disabled={qty === 0}>
+                                  <Minus className="w-4 h-4" />
+                                </Button>
+                                <span className="w-6 text-center font-bold text-lg">{qty}</span>
+                                <Button variant="outline" size="icon" className="h-8 w-8 rounded-full border-primary/20 hover:bg-primary/10 hover:text-primary" onClick={() => handleQtyChange(item.id, idx, 1)}>
+                                  <Plus className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                  {item.options.map((opt, idx) => {
-                    const qty = quantities[`${item.id}-${idx}`] || 0;
-                    return (
-                      <div key={idx} className="flex items-center justify-between bg-muted/30 p-2 rounded-md">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium">{opt.name}</span>
-                          <span className="text-xs text-muted-foreground">₹{opt.price}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8 rounded-full border-primary/20 hover:bg-primary/10 hover:text-primary"
-                            onClick={() => handleQtyChange(item.id, idx, -1)}
-                            disabled={qty === 0}
-                          >
-                            <Minus className="w-4 h-4" />
-                          </Button>
-                          <span className="w-6 text-center font-bold text-lg">{qty}</span>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8 rounded-full border-primary/20 hover:bg-primary/10 hover:text-primary"
-                            onClick={() => handleQtyChange(item.id, idx, 1)}
-                          >
-                            <Plus className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                );
+              })}
+            </div>
+          </div>
+
+          {items.length > 0 && (
+            <div className="bg-muted/20 rounded-xl border border-border p-3 space-y-1.5">
+              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Order Summary</div>
+              {items.map((it, idx) => (
+                <div key={idx} className="flex justify-between items-center text-sm">
+                  <span>{it.qty}× {it.name} <span className="text-muted-foreground">({it.option})</span></span>
+                  <span className="font-semibold">₹{it.price * it.qty}</span>
                 </div>
               ))}
             </div>
-          </div>
+          )}
 
           <div className="space-y-4 pt-4 border-t border-border">
             <div className="flex justify-between items-end">

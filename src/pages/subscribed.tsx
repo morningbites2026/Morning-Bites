@@ -36,14 +36,14 @@ function PaymentModeSelect({ value, onChange }: { value: string; onChange: (v: s
 }
 
 // WhatsApp message builders
-const buildMealUpdateMsg = (name: string, used: number, remaining: number, total: number) =>
-  `Hello ${name},\n\nHere is your Morning Bites meal update:\n✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh sprouts every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you,\nMorning Bites 🌿`;
+const buildMealUpdateMsg = (name: string, used: number, remaining: number, total: number, pkgName?: string) =>
+  `Hello ${name},\n\nHere is your Morning Bites meal update${pkgName ? ` for *${pkgName}*` : ''}:\n✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh sprouts every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you,\nMorning Bites 🌿`;
 
-const buildRenewPackMsg = (name: string, remaining: number, total: number, price: number) =>
-  `Hello ${name},\n\nYou currently have ${remaining} meal(s) remaining.\n\nRenew your pack today!\n🎉 ${total} fresh sprout meals for just ₹${price}!\n\n📍 Akota Garden, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you,\nMorning Bites 🌿`;
+const buildRenewPackMsg = (name: string, remaining: number, total: number, price: number, pkgName?: string) =>
+  `Hello ${name},\n\nYou currently have ${remaining} meal(s) remaining${pkgName ? ` in your *${pkgName}*` : ''}.\n\nRenew your pack today!\n🎉 ${total} fresh sprout meals for just ₹${price}!\n\n📍 Akota Garden, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you,\nMorning Bites 🌿`;
 
-const buildPackDoneMsg = (name: string, total: number, price: number) =>
-  `Hello ${name},\n\nAll ${total} meals have been used.\n\nRenew today!\n🎉 ${total} fresh sprout meals for just ₹${price}!\n\n📍 Akota Garden, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you,\nMorning Bites 🌿`;
+const buildPackDoneMsg = (name: string, total: number, price: number, pkgName?: string) =>
+  `Hello ${name},\n\nAll ${total} meals${pkgName ? ` in your *${pkgName}*` : ''} have been used.\n\nRenew today!\n🎉 ${total} fresh sprout meals for just ₹${price}!\n\n📍 Akota Garden, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you,\nMorning Bites 🌿`;
 
 const buildActiveSubMsg = (name: string, pkgName: string, total: number, price: number, startDate: string) =>
   `Hello ${name},\n\nWelcome to Morning Bites! 🌿\n\nYour ${pkgName} subscription is now active!\n\n📦 Pack: ${total} meals\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
@@ -62,7 +62,7 @@ export default function Subscribed() {
   const [filter, setFilter] = useState("all");
 
   const [notifyModal, setNotifyModal] = useState<{ open: boolean; customer: any; type: string; cp: CustomerPackage | null }>({ open: false, customer: null, type: "", cp: null });
-  const [skipModal, setSkipModal] = useState<{ open: boolean; customer: any }>({ open: false, customer: null });
+  const [skipModal, setSkipModal] = useState<{ open: boolean; customer: any; cp: CustomerPackage | null }>({ open: false, customer: null, cp: null });
   const [skipDate, setSkipDate] = useState(getISTISODate());
   const [editModal, setEditModal] = useState<{ open: boolean; customer: any }>({ open: false, customer: null });
   const [editName, setEditName] = useState("");
@@ -282,8 +282,8 @@ export default function Subscribed() {
     }
   };
 
-  const handleSendMealUpdate = (customer: any, used: number, remaining: number, total: number) => {
-    const msg = buildMealUpdateMsg(customer.name, used, remaining, total);
+  const handleSendMealUpdate = (customer: any, used: number, remaining: number, total: number, pkgName: string) => {
+    const msg = buildMealUpdateMsg(customer.name, used, remaining, total, pkgName || undefined);
     window.open(`https://wa.me/91${customer.phone}?text=${encodeURIComponent(msg)}`, '_blank');
     setMealUsedModal({ open: false, customer: null, used: 0, total: 0, pkgName: '' });
   };
@@ -420,14 +420,15 @@ export default function Subscribed() {
     const total = cp ? cp.total : c.total;
     const remaining = total - used;
     const price = pkg?.price || 0;
+    const pkgName = pkg?.name;
 
     let msg = "";
     if (notifyModal.type === 'meal') {
-      msg = buildMealUpdateMsg(c.name, used, remaining, total);
+      msg = buildMealUpdateMsg(c.name, used, remaining, total, pkgName);
     } else if (notifyModal.type === 'low') {
-      msg = buildRenewPackMsg(c.name, remaining, total, price);
+      msg = buildRenewPackMsg(c.name, remaining, total, price, pkgName);
     } else if (notifyModal.type === 'done') {
-      msg = buildPackDoneMsg(c.name, total, price);
+      msg = buildPackDoneMsg(c.name, total, price, pkgName);
     }
     window.open(`https://wa.me/91${c.phone}?text=${encodeURIComponent(msg)}`, '_blank');
     setNotifyModal({ open: false, customer: null, type: "", cp: null });
@@ -436,18 +437,27 @@ export default function Subscribed() {
   // ─── Skip ─────────────────────────────────────────────────────────────────
   const handleSkip = async () => {
     const c = skipModal.customer;
+    const skipCp = skipModal.cp;
     if (!c || !skipDate) return;
 
     const d = new Date(skipDate + 'T00:00:00');
     const dayName = d.toLocaleDateString('en-IN', { weekday: 'long' });
     const dateStr = d.toLocaleDateString('en-IN');
-    const msg = `Hello ${c.name},\n\nConfirmed — your Morning Bites pack is skipped for:\n\n📅 ${dayName}, ${dateStr}\n\nYour remaining meals stay the same. See you on your next day!\n\nMorning Bites 🌿`;
+    const pkg = skipCp ? packages.find(p => p.id === skipCp.package_id) : null;
+    const pkgLine = pkg ? `\n📦 Package: ${pkg.name}` : '';
+    const msg = `Hello ${c.name},\n\nConfirmed — your Morning Bites pack is skipped for:\n\n📅 ${dayName}, ${dateStr}${pkgLine}\n\nYour remaining meals stay the same. See you on your next day!\n\nMorning Bites 🌿`;
     window.open(`https://wa.me/91${c.phone}?text=${encodeURIComponent(msg)}`, '_blank');
 
     try {
-      await dbIns('meal_skips', { customer_id: c.id, skip_date: skipDate, notified: true, unskipped: false });
-      logActivity(c.id, 'meal_skipped', `Meal skipped for ${skipDate}`);
-      setSkipModal({ open: false, customer: null });
+      await dbIns('meal_skips', {
+        customer_id: c.id,
+        skip_date: skipDate,
+        notified: true,
+        unskipped: false,
+        customer_package_id: skipCp?.id ?? null,
+      });
+      logActivity(c.id, 'meal_skipped', `Meal skipped for ${skipDate}${pkg ? ` (${pkg.name})` : ''}`);
+      setSkipModal({ open: false, customer: null, cp: null });
       toast({ title: "Meal skipped & WhatsApp opened" });
       refresh();
     } catch (err: any) {
@@ -521,8 +531,12 @@ export default function Subscribed() {
   const openHistory = async (c: any) => {
     setHistoryModal({ open: true, customer: c });
     setHistoryLoading(true);
+    const cp = getSelectedCp(c);
     const logs = await getActivityLogs(c.id);
-    setHistoryLogs(logs);
+    // Filter to selected package's timeframe (from pack_start_date)
+    const cutoff = cp?.pack_start_date ? new Date(cp.pack_start_date + 'T00:00:00').getTime() : 0;
+    const filtered = cutoff > 0 ? logs.filter(l => new Date(l.created_at).getTime() >= cutoff) : logs;
+    setHistoryLogs(filtered);
     setHistoryLoading(false);
   };
 
@@ -690,7 +704,12 @@ export default function Subscribed() {
                     <div className="flex p-2 gap-1.5 bg-muted/10">
                       {weekDays.map((d, i) => {
                         const isScheduled = c.preferred_days.length === 0 || c.preferred_days.includes(i);
-                        const skip = mealSkips.find(s => s.customer_id === c.id && s.skip_date === d.iso && !s.unskipped);
+                        const skip = mealSkips.find(s =>
+                          s.customer_id === c.id &&
+                          s.skip_date === d.iso &&
+                          !s.unskipped &&
+                          (s.customer_package_id == null || s.customer_package_id === cp?.id)
+                        );
                         const isSkipped = !!skip;
                         const isToday = d.iso === getISTISODate();
                         return (
@@ -770,7 +789,7 @@ export default function Subscribed() {
 
                       <Button
                         variant="outline"
-                        onClick={() => { setSkipModal({ open: true, customer: c }); setSkipDate(getISTISODate()); }}
+                        onClick={() => { setSkipModal({ open: true, customer: c, cp }); setSkipDate(getISTISODate()); }}
                         disabled={isDone || c.status === 'cancelled'}
                         className="w-10 h-10 rounded-lg p-0 border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100"
                         title="Skip Meal"
@@ -949,7 +968,7 @@ export default function Subscribed() {
           </div>
           <DialogFooter className="flex-col gap-2">
             <Button
-              onClick={() => handleSendMealUpdate(mealUsedModal.customer, mealUsedModal.used, mealUsedModal.total - mealUsedModal.used, mealUsedModal.total)}
+              onClick={() => handleSendMealUpdate(mealUsedModal.customer, mealUsedModal.used, mealUsedModal.total - mealUsedModal.used, mealUsedModal.total, mealUsedModal.pkgName)}
               className="w-full h-12 rounded-xl bg-[#25D366] hover:bg-[#1DA851] text-white font-bold"
             >
               <MessageCircle className="w-5 h-5 mr-2" /> Send WhatsApp Update
@@ -962,12 +981,20 @@ export default function Subscribed() {
       </Dialog>
 
       {/* ─── Skip Modal ─────────────────────────────────────────────────────── */}
-      <Dialog open={skipModal.open} onOpenChange={o => !o && setSkipModal({ ...skipModal, open: false })}>
+      <Dialog open={skipModal.open} onOpenChange={o => !o && setSkipModal({ open: false, customer: null, cp: null })}>
         <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">Skip Meal</DialogTitle>
           </DialogHeader>
           <div className="py-4 space-y-5">
+            {skipModal.cp && (() => {
+              const pkg = packages.find(p => p.id === skipModal.cp!.package_id);
+              return pkg ? (
+                <div className="p-3 bg-primary/5 rounded-xl text-sm font-semibold text-primary border border-primary/20">
+                  📦 Package: {pkg.name}
+                </div>
+              ) : null;
+            })()}
             <div className="space-y-2">
               <Label>Skip Date</Label>
               <Input type="date" value={skipDate} onChange={e => setSkipDate(e.target.value)} className="h-12 rounded-xl" />

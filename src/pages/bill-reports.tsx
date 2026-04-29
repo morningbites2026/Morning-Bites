@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { dbUpd, dbDel, formatIST, getISTDateDisplay, UPI_ID } from "@/lib/supabase";
+import { dbUpd, dbDel, formatIST, getISTDateDisplay, getISTISODate, UPI_ID } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { Edit, Trash2, CalendarDays, ReceiptText, QrCode, Banknote, CreditCard, Plus, Minus } from "lucide-react";
+import { Edit, Trash2, CalendarDays, ReceiptText, QrCode, Banknote, CreditCard, Plus, Minus, ChevronDown, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function BillReports() {
   const { bills, menuItems, refresh } = useStore();
@@ -25,8 +26,17 @@ export default function BillReports() {
   const [editNotes, setEditNotes] = useState("");
   const [editItems, setEditItems] = useState<Array<{ name: string; option: string; price: number; qty: number }>>([]);
   const [editQrOpen, setEditQrOpen] = useState(false);
+  const [editExpandedGroup, setEditExpandedGroup] = useState<number | null>(null);
 
   const today = getISTDateDisplay();
+
+  // Normalize bill_date to ISO (YYYY-MM-DD) — handles both "29/4/2026" and "29/04/2026"
+  const billDateToISO = (dateStr: string): string => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('/');
+    if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+    return dateStr;
+  };
 
   const getWeekStart = () => {
     const d = new Date();
@@ -42,11 +52,9 @@ export default function BillReports() {
 
   const filteredBills = bills.filter(b => {
     if (dateFilter) {
-      const billDate = new Date(b.created_at);
-      const filterDate = new Date(dateFilter);
-      return billDate.toDateString() === filterDate.toDateString();
+      return billDateToISO(b.bill_date) === dateFilter;
     }
-    if (period === "today") return b.bill_date === today;
+    if (period === "today") return billDateToISO(b.bill_date) === getISTISODate();
     if (period === "week") {
       const billDate = new Date(b.created_at);
       return billDate >= getWeekStart();
@@ -70,6 +78,7 @@ export default function BillReports() {
     setEditNotes(bill.notes || "");
     setEditItems(JSON.parse(JSON.stringify(bill.items)));
     setEditQrOpen(false);
+    setEditExpandedGroup(null);
   };
 
   const editTotal = editItems.reduce((s, it) => s + it.price * it.qty, 0);
@@ -289,8 +298,8 @@ export default function BillReports() {
             <div className="space-y-2">
               <Label>Items</Label>
 
-              {/* Legacy items: in bill but no longer in active menu */}
-              {editItems.filter(it => !activeMenuItems.some(m => m.name === it.name)).map((it, _) => {
+              {/* Legacy items not in active menu */}
+              {editItems.filter(it => !activeMenuItems.some(m => m.name === it.name)).map(it => {
                 const realIdx = editItems.indexOf(it);
                 return (
                   <div key={realIdx} className="flex items-center justify-between bg-muted/30 p-2 rounded-lg">
@@ -311,36 +320,57 @@ export default function BillReports() {
                 );
               })}
 
-              {/* Menu items — same layout as billing screen */}
-              <div className="flex flex-col gap-3 max-h-72 overflow-y-auto pr-1">
-                {activeMenuItems.map(item => (
-                  <div key={item.id} className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm">{item.name}</span>
-                    </div>
-                    {item.options.map((opt, optIdx) => {
-                      const existingIdx = editItems.findIndex(it => it.name === item.name && it.option === opt.name);
-                      const qty = existingIdx >= 0 ? editItems[existingIdx].qty : 0;
-                      return (
-                        <div key={optIdx} className="flex items-center justify-between bg-muted/30 p-2 rounded-md">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium">{opt.name}</span>
-                            <span className="text-xs text-muted-foreground">₹{opt.price}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(existingIdx, -1)} disabled={qty === 0}>
-                              <Minus className="w-3 h-3" />
-                            </Button>
-                            <span className="w-5 text-center font-bold text-sm">{qty}</span>
-                            <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleAddMenuItemToEdit(item, optIdx)}>
-                              <Plus className="w-3 h-3" />
-                            </Button>
-                          </div>
+              {/* Active menu items — collapsible groups */}
+              <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto pr-1">
+                {activeMenuItems.map(item => {
+                  const itemQty = item.options.reduce((s: number, opt: any) => {
+                    const idx = editItems.findIndex(it => it.name === item.name && it.option === opt.name);
+                    return s + (idx >= 0 ? editItems[idx].qty : 0);
+                  }, 0);
+                  const isOpen = editExpandedGroup === item.id;
+                  return (
+                    <div key={item.id} className="rounded-xl border border-border overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setEditExpandedGroup(prev => prev === item.id ? null : item.id)}
+                        className="w-full flex items-center justify-between px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                          <span className="font-semibold text-sm">{item.name}</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                ))}
+                        {itemQty > 0 && (
+                          <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{itemQty}</span>
+                        )}
+                      </button>
+                      {isOpen && (
+                        <div className="flex flex-col gap-1 p-2 bg-background">
+                          {item.options.map((opt: any, optIdx: number) => {
+                            const existingIdx = editItems.findIndex(it => it.name === item.name && it.option === opt.name);
+                            const qty = existingIdx >= 0 ? editItems[existingIdx].qty : 0;
+                            return (
+                              <div key={optIdx} className={cn("flex items-center justify-between bg-muted/20 p-2 rounded-md", qty > 0 && "bg-primary/5")}>
+                                <div>
+                                  <div className="text-sm font-medium">{opt.name}</div>
+                                  <div className="text-xs text-muted-foreground">₹{opt.price}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(existingIdx, -1)} disabled={qty === 0}>
+                                    <Minus className="w-3 h-3" />
+                                  </Button>
+                                  <span className="w-5 text-center font-bold text-sm">{qty}</span>
+                                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleAddMenuItemToEdit(item, optIdx)}>
+                                    <Plus className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

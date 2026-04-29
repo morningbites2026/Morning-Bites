@@ -1,14 +1,19 @@
 import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { dbUpd, formatIST } from "@/lib/supabase";
+import { dbUpd, formatIST, getISTISODate, getISTDateDisplay } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarDays, IndianRupee, TrendingUp, ReceiptText, Banknote, CreditCard, QrCode, Share2, ClipboardList, CheckCircle2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  CalendarDays, IndianRupee, TrendingUp, ReceiptText, Banknote, CreditCard,
+  QrCode, Share2, ClipboardList, CheckCircle2, Edit, X, ChevronDown, ChevronRight, Plus, Minus
+} from "lucide-react";
 
 function isoDate(d: Date) {
   return d.toISOString().split("T")[0];
@@ -16,8 +21,8 @@ function isoDate(d: Date) {
 
 function weekStart(d: Date) {
   const x = new Date(d);
-  const day = x.getDay(); // 0=Sun
-  const diff = x.getDate() - (day === 0 ? 6 : day - 1); // Monday
+  const day = x.getDay();
+  const diff = x.getDate() - (day === 0 ? 6 : day - 1);
   x.setHours(0, 0, 0, 0);
   x.setDate(diff);
   return x;
@@ -27,29 +32,46 @@ function monthStart(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
 }
 
-function toLocalDateStr(d: Date) {
-  return d.toLocaleDateString("en-IN");
+function openWhatsAppShare(text: string) {
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
 }
 
-function openWhatsAppShare(text: string) {
-  const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-  window.open(url, "_blank", "noopener,noreferrer");
+function prettyDate(iso: string) {
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 export default function Dashboard() {
-  const { bills, preorders, refresh } = useStore();
+  const { bills, preorders, menuItems, refresh } = useStore();
   const { toast } = useToast();
 
   const now = new Date();
-  const todayStr = toLocalDateStr(now);
+  const todayIso = getISTISODate();
+  const todayStr = getISTDateDisplay();
   const ws = weekStart(now);
   const ms = monthStart(now);
+
+  const billDateToISO = (dateStr: string): string => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('/');
+    if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+    return dateStr;
+  };
 
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [historySearch, setHistorySearch] = useState("");
 
-  const todayBills = bills.filter((b) => b.bill_date === todayStr);
+  // Preorder edit state
+  const [editPo, setEditPo] = useState<any>(null);
+  const [editPoName, setEditPoName] = useState("");
+  const [editPoPhone, setEditPoPhone] = useState("");
+  const [editPoDate, setEditPoDate] = useState("");
+  const [editPoNotes, setEditPoNotes] = useState("");
+  const [editPoItems, setEditPoItems] = useState<Array<{ name: string; option: string; price: number; qty: number }>>([]);
+  const [editPoExpandedGroup, setEditPoExpandedGroup] = useState<number | null>(null);
+  const [isSavingPo, setIsSavingPo] = useState(false);
+
+  const todayBills = bills.filter((b) => billDateToISO(b.bill_date) === todayIso);
   const todayRevenue = todayBills.reduce((s, b) => s + b.total_amount, 0);
 
   const weekBills = bills.filter((b) => new Date(b.created_at) >= ws);
@@ -68,8 +90,7 @@ export default function Dashboard() {
         if (from && created < from) return false;
         if (to && created > to) return false;
         if (q) {
-          const name = (b.customer_name || "walk-in").toLowerCase();
-          if (!name.includes(q)) return false;
+          if (!(b.customer_name || "walk-in").toLowerCase().includes(q)) return false;
         }
         return true;
       })
@@ -88,8 +109,20 @@ export default function Dashboard() {
   }, []);
 
   const tomorrowPreorders = useMemo(
-    () => preorders.filter((p) => p.pickup_date === tomorrowIso && !p.is_fulfilled),
+    () => preorders.filter((p) => p.pickup_date === tomorrowIso && !p.is_fulfilled && !p.is_cancelled),
     [preorders, tomorrowIso]
+  );
+
+  const pendingPreorders = useMemo(
+    () => preorders.filter((p) => !p.is_fulfilled && !p.is_cancelled)
+      .sort((a, b) => a.pickup_date.localeCompare(b.pickup_date)),
+    [preorders]
+  );
+
+  const completedPreorders = useMemo(
+    () => preorders.filter((p) => p.is_fulfilled || p.is_cancelled)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [preorders]
   );
 
   const prepSummary = useMemo(() => {
@@ -104,6 +137,11 @@ export default function Dashboard() {
     return Array.from(map.values()).sort((a, b) => b.qty - a.qty);
   }, [tomorrowPreorders]);
 
+  const allMenuItems = useMemo(
+    () => menuItems.filter(m => m.is_active).sort((a, b) => a.sort_order - b.sort_order),
+    [menuItems]
+  );
+
   const shareToday = () => {
     const lines = [
       `Morning Bites – Earnings`,
@@ -111,9 +149,9 @@ export default function Dashboard() {
       `Today (${todayStr})`,
       `Total: ₹${todayRevenue}`,
       `Bills: ${todayBills.length}`,
-      `Cash: ₹${todayBills.filter((b) => b.payment_mode === "cash").reduce((s, b) => s + b.total_amount, 0)}`,
-      `UPI: ₹${todayBills.filter((b) => b.payment_mode === "upi").reduce((s, b) => s + b.total_amount, 0)}`,
-      `Scan & Pay: ₹${todayBills.filter((b) => b.payment_mode === "scanpay").reduce((s, b) => s + b.total_amount, 0)}`,
+      `Cash: ₹${todayBills.filter(b => b.payment_mode === "cash").reduce((s, b) => s + b.total_amount, 0)}`,
+      `UPI: ₹${todayBills.filter(b => b.payment_mode === "upi").reduce((s, b) => s + b.total_amount, 0)}`,
+      `Scan & Pay: ₹${todayBills.filter(b => b.payment_mode === "scanpay").reduce((s, b) => s + b.total_amount, 0)}`,
     ];
     openWhatsAppShare(lines.join("\n"));
   };
@@ -123,12 +161,12 @@ export default function Dashboard() {
       toast({ description: "No preorders for tomorrow." });
       return;
     }
-    const prettyDate = new Date(tomorrowIso + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "short", day: "2-digit" });
+    const prettyDateStr = new Date(tomorrowIso + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "short", day: "2-digit" });
     const lines = [
       `Morning Bites – Tomorrow Prep`,
-      `${prettyDate}`,
+      prettyDateStr,
       ``,
-      ...prepSummary.map((x) => `- ${x.qty} × ${x.name} (${x.option})`),
+      ...prepSummary.map(x => `- ${x.qty} × ${x.name} (${x.option})`),
       ``,
       `Preorders: ${tomorrowPreorders.length}`,
     ];
@@ -145,6 +183,125 @@ export default function Dashboard() {
     }
   };
 
+  const cancelPreorder = async (id: number, name: string) => {
+    if (!window.confirm(`Cancel preorder for "${name}"?`)) return;
+    try {
+      await dbUpd("preorders", id, { is_cancelled: true });
+      toast({ title: "Preorder cancelled" });
+      refresh();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: err.message });
+    }
+  };
+
+  const openEditPo = (po: any) => {
+    setEditPo(po);
+    setEditPoName(po.customer_name || "");
+    setEditPoPhone(po.phone || "");
+    setEditPoDate(po.pickup_date);
+    setEditPoNotes(po.notes || "");
+    setEditPoItems(JSON.parse(JSON.stringify(po.items)));
+    setEditPoExpandedGroup(null);
+  };
+
+  const editPoTotal = editPoItems.reduce((s, it) => s + it.price * it.qty, 0);
+
+  const handleEditPoQtyChange = (idx: number, delta: number) => {
+    setEditPoItems(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], qty: Math.max(0, next[idx].qty + delta) };
+      return next.filter((_, i) => i !== idx || next[idx].qty > 0);
+    });
+  };
+
+  const handleAddMenuItemToPo = (item: any, optIdx: number) => {
+    const opt = item.options[optIdx];
+    const existing = editPoItems.findIndex(it => it.name === item.name && it.option === opt.name);
+    if (existing >= 0) {
+      const next = [...editPoItems];
+      next[existing] = { ...next[existing], qty: next[existing].qty + 1 };
+      setEditPoItems(next);
+    } else {
+      setEditPoItems(prev => [...prev, { name: item.name, option: opt.name, price: opt.price, qty: 1 }]);
+    }
+  };
+
+  const handleSaveEditPo = async () => {
+    if (!editPo) return;
+    if (!editPoDate) { toast({ variant: "destructive", description: "Pickup date required." }); return; }
+    if (editPoItems.length === 0) { toast({ variant: "destructive", description: "Add at least one item." }); return; }
+    setIsSavingPo(true);
+    try {
+      await dbUpd("preorders", editPo.id, {
+        customer_name: editPoName || null,
+        phone: editPoPhone || null,
+        pickup_date: editPoDate,
+        notes: editPoNotes || null,
+        items: editPoItems,
+        total_amount: editPoTotal,
+      });
+      toast({ title: "Preorder updated" });
+      setEditPo(null);
+      refresh();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: err.message });
+    } finally {
+      setIsSavingPo(false);
+    }
+  };
+
+  const PreorderCard = ({ po, showActions }: { po: any; showActions: boolean }) => (
+    <Card className={cn("border-border shadow-sm overflow-hidden", po.is_cancelled && "opacity-60")}>
+      <div className="p-3 bg-muted/30 flex justify-between items-center border-b border-border">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="font-bold text-sm truncate">{po.customer_name || "Customer"}</div>
+            {po.is_cancelled && <Badge variant="destructive" className="text-[10px] shrink-0">Cancelled</Badge>}
+            {po.is_fulfilled && <Badge className="text-[10px] bg-green-100 text-green-800 shrink-0">Fulfilled</Badge>}
+          </div>
+          {po.phone && <div className="text-[10px] text-muted-foreground">{po.phone}</div>}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-base font-black text-primary">₹{po.total_amount}</div>
+          {showActions && (
+            <>
+              <Button variant="outline" size="icon" className="h-7 w-7 rounded-lg" onClick={() => openEditPo(po)}>
+                <Edit className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="outline" size="icon"
+                className="h-7 w-7 rounded-lg border-red-200 text-red-600 bg-red-50 hover:bg-red-100"
+                onClick={() => cancelPreorder(po.id, po.customer_name || "Customer")}
+              >
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <CalendarDays className="w-3 h-3" />
+          Pickup: {prettyDate(po.pickup_date)}
+          {po.pickup_date === tomorrowIso && <Badge className="text-[10px] bg-amber-100 text-amber-800 ml-1">Tomorrow</Badge>}
+          {po.pickup_date === todayIso && <Badge className="text-[10px] bg-primary/10 text-primary ml-1">Today</Badge>}
+        </div>
+        <div className="text-xs text-muted-foreground space-y-0.5">
+          {po.items.map((it: any, idx: number) => (
+            <div key={idx}>{it.qty}× {it.name} ({it.option})</div>
+          ))}
+        </div>
+        {showActions && (
+          <div className="flex justify-end pt-1">
+            <Button variant="outline" size="sm" className="rounded-full text-xs h-7" onClick={() => markFulfilled(po.id)}>
+              <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Mark Fulfilled
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-300 pb-8">
       <Tabs defaultValue="earnings" className="w-full">
@@ -154,6 +311,7 @@ export default function Dashboard() {
           <TabsTrigger value="preorders" className="rounded-lg text-xs">Preorders</TabsTrigger>
         </TabsList>
 
+        {/* ─── Earnings ─── */}
         <TabsContent value="earnings" className="mt-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Card className="border-border bg-primary text-primary-foreground shadow-md">
@@ -191,26 +349,21 @@ export default function Dashboard() {
           </div>
         </TabsContent>
 
+        {/* ─── History ─── */}
         <TabsContent value="history" className="mt-4 space-y-4">
           <Card className="border-border shadow-sm">
             <CardContent className="p-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">From</Label>
-                  <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-9 text-sm" />
+                  <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="h-9 text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">To</Label>
-                  <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-9 text-sm" />
+                  <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="h-9 text-sm" />
                 </div>
               </div>
-              <Input
-                placeholder="Search customer name..."
-                value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
-                className="h-9 text-sm"
-              />
-
+              <Input placeholder="Search customer name..." value={historySearch} onChange={e => setHistorySearch(e.target.value)} className="h-9 text-sm" />
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <Card className="border-border bg-primary text-primary-foreground">
                   <CardContent className="p-3">
@@ -225,7 +378,7 @@ export default function Dashboard() {
                       { label: "Cash", icon: <Banknote className="w-3.5 h-3.5 text-green-600" />, rev: historyCash },
                       { label: "UPI", icon: <CreditCard className="w-3.5 h-3.5 text-blue-600" />, rev: historyUpi },
                       { label: "Scan", icon: <QrCode className="w-3.5 h-3.5 text-purple-600" />, rev: historyScan },
-                    ].map((m) => (
+                    ].map(m => (
                       <div key={m.label} className="flex justify-between items-center text-xs">
                         <div className="flex items-center gap-2 font-medium">{m.icon} {m.label}</div>
                         <div className="font-bold">₹{m.rev}</div>
@@ -236,7 +389,6 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
-
           <div className="space-y-3">
             {filteredHistory.length === 0 ? (
               <div className="text-center p-8 text-muted-foreground flex flex-col items-center">
@@ -244,13 +396,12 @@ export default function Dashboard() {
                 <p>No entries found.</p>
               </div>
             ) : (
-              filteredHistory.slice(0, 80).map((bill) => (
+              filteredHistory.slice(0, 80).map(bill => (
                 <Card key={bill.id} className="border-border shadow-sm overflow-hidden">
                   <div className="p-3 bg-muted/30 flex justify-between items-center border-b border-border">
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                        <CalendarDays className="w-3 h-3" />
-                        {bill.bill_date}
+                        <CalendarDays className="w-3 h-3" /> {bill.bill_date}
                       </div>
                       <div className="text-[10px] text-muted-foreground/70">{formatIST(bill.created_at)}</div>
                     </div>
@@ -263,9 +414,7 @@ export default function Dashboard() {
                       <div className="font-bold text-base truncate">{bill.customer_name || "Walk-in"}</div>
                       <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
                         {bill.items.map((it, idx) => (
-                          <div key={idx} className="truncate">
-                            {it.qty}× {it.name} ({it.option}) — ₹{it.price * it.qty}
-                          </div>
+                          <div key={idx} className="truncate">{it.qty}× {it.name} ({it.option}) — ₹{it.price * it.qty}</div>
                         ))}
                       </div>
                     </div>
@@ -275,12 +424,14 @@ export default function Dashboard() {
               ))
             )}
             {filteredHistory.length > 80 && (
-              <div className="text-center text-xs text-muted-foreground">Showing latest 80 entries. Narrow the filters to see more.</div>
+              <div className="text-center text-xs text-muted-foreground">Showing latest 80. Narrow filters to see more.</div>
             )}
           </div>
         </TabsContent>
 
+        {/* ─── Preorders ─── */}
         <TabsContent value="preorders" className="mt-4 space-y-4">
+          {/* Tomorrow prep summary */}
           <Card className="border-border shadow-sm">
             <CardHeader className="p-4 pb-2 bg-muted/30">
               <CardTitle className="text-sm flex items-center justify-between">
@@ -294,14 +445,12 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="p-4">
               {prepSummary.length === 0 ? (
-                <div className="text-sm text-muted-foreground text-center py-6">No preorders for tomorrow.</div>
+                <div className="text-sm text-muted-foreground text-center py-4">No preorders for tomorrow.</div>
               ) : (
                 <div className="space-y-2">
-                  {prepSummary.map((x) => (
+                  {prepSummary.map(x => (
                     <div key={`${x.name}||${x.option}`} className="flex justify-between items-center bg-muted/30 rounded-lg p-2">
-                      <div className="text-sm font-medium">
-                        {x.name} <span className="text-xs text-muted-foreground">({x.option})</span>
-                      </div>
+                      <div className="text-sm font-medium">{x.name} <span className="text-xs text-muted-foreground">({x.option})</span></div>
                       <div className="text-lg font-black text-primary">{x.qty}</div>
                     </div>
                   ))}
@@ -310,39 +459,153 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {tomorrowPreorders.length > 0 && (
-            <div className="space-y-3 pb-4">
-              {tomorrowPreorders.map((po) => (
-                <Card key={po.id} className="border-border shadow-sm overflow-hidden">
-                  <div className="p-3 bg-muted/30 flex justify-between items-center border-b border-border">
-                    <div className="min-w-0">
-                      <div className="font-bold text-sm truncate">{po.customer_name || "Customer"}</div>
-                      <div className="text-[10px] text-muted-foreground/70 truncate">{po.phone || ""}</div>
-                    </div>
-                    <div className="text-lg font-black text-primary">₹{po.total_amount}</div>
-                  </div>
-                  <CardContent className="p-4 space-y-3">
-                    <div className="text-xs text-muted-foreground space-y-0.5">
-                      {po.items.map((it, idx) => (
-                        <div key={idx}>{it.qty}× {it.name} ({it.option})</div>
-                      ))}
-                    </div>
-                    <div className="flex justify-end">
-                      <Button
-                        variant="outline"
-                        className="rounded-full"
-                        onClick={() => markFulfilled(po.id)}
-                      >
-                        <CheckCircle2 className="w-4 h-4 mr-2" /> Mark Fulfilled
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+          {/* Pending / Completed sub-tabs */}
+          <Tabs defaultValue="pending" className="w-full">
+            <TabsList className="w-full bg-muted/50 p-1 grid grid-cols-2 rounded-xl">
+              <TabsTrigger value="pending" className="rounded-lg text-xs">
+                Pending ({pendingPreorders.length})
+              </TabsTrigger>
+              <TabsTrigger value="completed" className="rounded-lg text-xs">
+                Completed ({completedPreorders.length})
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="pending" className="mt-3 space-y-3 pb-4">
+              {pendingPreorders.length === 0 ? (
+                <div className="text-center p-8 text-muted-foreground text-sm">No pending preorders.</div>
+              ) : (
+                pendingPreorders.map(po => <PreorderCard key={po.id} po={po} showActions={true} />)
+              )}
+            </TabsContent>
+
+            <TabsContent value="completed" className="mt-3 space-y-3 pb-4">
+              {completedPreorders.length === 0 ? (
+                <div className="text-center p-8 text-muted-foreground text-sm">No completed preorders.</div>
+              ) : (
+                completedPreorders.map(po => <PreorderCard key={po.id} po={po} showActions={false} />)
+              )}
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
+
+      {/* ─── Edit Preorder Modal ─── */}
+      <Dialog open={!!editPo} onOpenChange={o => !o && setEditPo(null)}>
+        <DialogContent className="sm:max-w-md w-[92%] rounded-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="w-4 h-4" /> Edit Preorder
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Customer Name</Label>
+              <Input value={editPoName} onChange={e => setEditPoName(e.target.value)} placeholder="Customer" />
+            </div>
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input value={editPoPhone} onChange={e => setEditPoPhone(e.target.value)} placeholder="10-digit" />
+            </div>
+            <div className="space-y-2">
+              <Label>Pickup Date</Label>
+              <Input type="date" value={editPoDate} onChange={e => setEditPoDate(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Items</Label>
+              <div className="flex flex-col gap-1.5">
+                {allMenuItems.map(item => {
+                  const itemQty = item.options.reduce((s: number, _: any, idx: number) => {
+                    const existing = editPoItems.findIndex(it => it.name === item.name && it.option === item.options[idx].name);
+                    return s + (existing >= 0 ? editPoItems[existing].qty : 0);
+                  }, 0);
+                  const isOpen = editPoExpandedGroup === item.id;
+                  return (
+                    <div key={item.id} className="rounded-xl border border-border overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setEditPoExpandedGroup(prev => prev === item.id ? null : item.id)}
+                        className="w-full flex items-center justify-between px-3 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                          <span className="font-semibold text-sm">{item.name}</span>
+                          {(item.category || 'daily') === 'week_special' && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-bold">WS</span>
+                          )}
+                        </div>
+                        {itemQty > 0 && (
+                          <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{itemQty}</span>
+                        )}
+                      </button>
+                      {isOpen && (
+                        <div className="flex flex-col gap-1 p-2 bg-background">
+                          {item.options.map((opt: any, optIdx: number) => {
+                            const existingIdx = editPoItems.findIndex(it => it.name === item.name && it.option === opt.name);
+                            const qty = existingIdx >= 0 ? editPoItems[existingIdx].qty : 0;
+                            return (
+                              <div key={optIdx} className="flex items-center justify-between bg-muted/20 p-2 rounded-md">
+                                <div>
+                                  <div className="text-sm font-medium">{opt.name}</div>
+                                  <div className="text-xs text-muted-foreground">₹{opt.price}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditPoQtyChange(existingIdx, -1)} disabled={qty === 0}>
+                                    <Minus className="w-3 h-3" />
+                                  </Button>
+                                  <span className="w-5 text-center font-bold text-sm">{qty}</span>
+                                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleAddMenuItemToPo(item, optIdx)}>
+                                    <Plus className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Current items in order */}
+              {editPoItems.length > 0 && (
+                <div className="mt-2 p-3 bg-muted/20 rounded-xl border border-border space-y-1.5">
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Order</div>
+                  {editPoItems.map((it, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-sm">
+                      <span>{it.name} <span className="text-muted-foreground">({it.option})</span></span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">₹{it.price * it.qty}</span>
+                        <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={() => handleEditPoQtyChange(idx, -1)}>
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <span className="w-4 text-center font-bold text-sm">{it.qty}</span>
+                        <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={() => handleEditPoQtyChange(idx, 1)}>
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="pt-1 border-t border-border flex justify-between font-bold text-sm">
+                    <span>Total</span>
+                    <span className="text-primary">₹{editPoTotal}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Input value={editPoNotes} onChange={e => setEditPoNotes(e.target.value)} placeholder="Optional notes" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSaveEditPo} disabled={isSavingPo} className="w-full h-12 rounded-xl font-bold">
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
