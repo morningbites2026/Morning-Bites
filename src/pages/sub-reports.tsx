@@ -212,14 +212,21 @@ export default function SubReports() {
                         const used = cp ? cp.used : c.used;
                         const total = cp ? cp.total : c.total;
                         return (
-                          <div key={c.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                            <div>
-                              <div className="font-semibold text-sm">{c.name}</div>
-                              <div className="text-xs text-muted-foreground">{c.phone}</div>
-                            </div>
-                            <div className="text-xs text-right text-muted-foreground">
-                              <div className="font-bold text-foreground">{total - used} left</div>
-                              <div>{used}/{total} used</div>
+                          <div key={c.id} className="py-2 border-b border-border last:border-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm">{c.name}</div>
+                                <div className="text-xs text-muted-foreground">{c.phone}</div>
+                                {cp?.instruction && (
+                                  <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 italic flex items-center gap-1">
+                                    📝 {cp.instruction}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-xs text-right text-muted-foreground shrink-0">
+                                <div className="font-bold text-foreground">{total - used} left</div>
+                                <div>{used}/{total} used</div>
+                              </div>
                             </div>
                           </div>
                         );

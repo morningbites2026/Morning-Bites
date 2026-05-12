@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Check, Undo2, SkipForward, RefreshCw, Trash2, Edit, MessageCircle, ChevronLeft, ChevronRight, History, Plus, Banknote, CreditCard, QrCode, Ban } from "lucide-react";
+import { Check, Undo2, SkipForward, RefreshCw, Trash2, Edit, MessageCircle, ChevronLeft, ChevronRight, History, Plus, Banknote, CreditCard, QrCode, Ban, AlertCircle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
@@ -101,6 +101,9 @@ export default function Subscribed() {
   const [historyModal, setHistoryModal] = useState<{ open: boolean; customer: any }>({ open: false, customer: null });
   const [historyLogs, setHistoryLogs] = useState<ActivityLog[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [instrModal, setInstrModal] = useState<{ open: boolean; customer: any }>({ open: false, customer: null });
+  const [instrEdits, setInstrEdits] = useState<Record<number, string>>({});
 
   const [mealUsedModal, setMealUsedModal] = useState<{ open: boolean; customer: any; used: number; total: number; pkgName: string }>({ open: false, customer: null, used: 0, total: 0, pkgName: '' });
 
@@ -596,6 +599,28 @@ export default function Subscribed() {
     setHistoryLoading(false);
   };
 
+  // ─── Instructions ─────────────────────────────────────────────────────────
+  const openInstr = (c: any) => {
+    const cps = getCustPacks(c.id).filter(cp => cp.status === 'active');
+    const edits: Record<number, string> = {};
+    cps.forEach(cp => { edits[cp.id] = cp.instruction || ''; });
+    setInstrEdits(edits);
+    setInstrModal({ open: true, customer: c });
+  };
+
+  const saveInstr = async () => {
+    try {
+      for (const [cpId, instr] of Object.entries(instrEdits)) {
+        await dbUpd('customer_packages', Number(cpId), { instruction: instr });
+      }
+      toast({ title: "Instructions saved" });
+      setInstrModal({ open: false, customer: null });
+      refresh();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: err.message });
+    }
+  };
+
   // ─── Week helpers ──────────────────────────────────────────────────────────
   const getWeekDays = (offset: number) => {
     const today = new Date();
@@ -833,6 +858,15 @@ export default function Subscribed() {
                     )}
 
                     <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => openInstr(c)}
+                        className="w-10 h-10 rounded-lg p-0 border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100"
+                        title="Instructions"
+                      >
+                        <AlertCircle className="w-4 h-4" />
+                      </Button>
+
                       {!isDone && (
                         <Button
                           variant="outline"
@@ -1378,6 +1412,65 @@ export default function Subscribed() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Instructions Modal ─────────────────────────────────────────────── */}
+      <Dialog open={instrModal.open} onOpenChange={o => !o && setInstrModal({ open: false, customer: null })}>
+        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-serif flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-500" /> Instructions — {instrModal.customer?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            {instrModal.customer && (() => {
+              const cps = getCustPacks(instrModal.customer.id).filter(cp => cp.status === 'active');
+              if (cps.length === 0) return (
+                <div className="text-sm text-muted-foreground text-center py-4 bg-muted/20 rounded-xl border border-dashed">
+                  No active packages found.
+                </div>
+              );
+              return cps.map(cp => {
+                const pkg = packages.find(p => p.id === cp.package_id);
+                return (
+                  <div key={cp.id} className="space-y-2 p-3 bg-muted/20 rounded-xl border border-border">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-bold text-primary">{pkg?.name || 'Package'}</div>
+                      <div className="text-xs text-muted-foreground">{cp.total - cp.used} meals left</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="e.g. No onions, extra sprouts..."
+                        value={instrEdits[cp.id] ?? ''}
+                        onChange={e => setInstrEdits(prev => ({ ...prev, [cp.id]: e.target.value }))}
+                        className="h-9 rounded-lg text-sm flex-1"
+                      />
+                      {instrEdits[cp.id] && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 rounded-lg border-red-200 text-red-500 hover:bg-red-50 shrink-0"
+                          onClick={() => setInstrEdits(prev => ({ ...prev, [cp.id]: '' }))}
+                          title="Clear instruction"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                    {cp.instruction && instrEdits[cp.id] === '' && (
+                      <div className="text-xs text-amber-600 italic">Saving will clear the existing instruction.</div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+          <DialogFooter>
+            <Button onClick={saveInstr} className="w-full h-12 rounded-xl text-base font-bold">
+              Save Instructions
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

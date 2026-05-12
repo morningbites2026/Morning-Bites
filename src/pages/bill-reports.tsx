@@ -383,7 +383,7 @@ export default function BillReports() {
                         <button
                           type="button"
                           onClick={() => setEditExpandedGroup(prev => prev === item.id ? null : item.id)}
-                          className="w-full flex items-center gap-2 px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-semibold"
+                          className="w-full flex items-center gap-2 px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-semibold text-foreground"
                         >
                           {isOpen ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
                           {item.name}
@@ -392,7 +392,7 @@ export default function BillReports() {
                           <div className="flex flex-col gap-0.5 p-1.5 bg-background">
                             {item.options.map((opt: any, optIdx: number) => (
                               <button key={optIdx} onClick={() => handleAddMenuItemToEdit(item, optIdx)}
-                                className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-muted/20 hover:bg-primary/5 transition-colors text-left w-full">
+                                className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-muted/20 hover:bg-primary/5 transition-colors text-left w-full text-foreground">
                                 <div>
                                   <span className="text-sm font-medium">{opt.name}</span>
                                   <span className="text-xs text-muted-foreground ml-1.5">₹{opt.price}</span>
