@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { dbUpd, dbDel, formatIST, getISTISODate, UPI_ID } from "@/lib/supabase";
+import { dbUpd, dbDel, formatIST, getISTISODate, formatISTDate, UPI_ID } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { Edit, Trash2, CalendarDays, ReceiptText, QrCode, Banknote, CreditCard, Plus, Minus, ChevronDown, ChevronRight } from "lucide-react";
+import { Edit, Trash2, CalendarDays, ReceiptText, QrCode, Banknote, CreditCard, Plus, Minus, ChevronDown, ChevronRight, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function BillReports() {
@@ -27,6 +27,10 @@ export default function BillReports() {
   const [editItems, setEditItems] = useState<Array<{ name: string; option: string; price: number; qty: number }>>([]);
   const [editQrOpen, setEditQrOpen] = useState(false);
   const [editExpandedGroup, setEditExpandedGroup] = useState<number | null>(null);
+  const [editDiscountType, setEditDiscountType] = useState<'amount' | 'percent'>('amount');
+  const [editDiscountValue, setEditDiscountValue] = useState("");
+  const [editCustomTotal, setEditCustomTotal] = useState("");
+  const [editDate, setEditDate] = useState("");
 
   // Normalize bill_date to ISO (YYYY-MM-DD) — handles both "29/4/2026" and "29/04/2026"
   const billDateToISO = (dateStr: string): string => {
@@ -77,9 +81,19 @@ export default function BillReports() {
     setEditItems(JSON.parse(JSON.stringify(bill.items)));
     setEditQrOpen(false);
     setEditExpandedGroup(null);
+    setEditDiscountType('amount');
+    setEditDiscountValue("");
+    setEditCustomTotal("");
+    setEditDate(bill.bill_date ? billDateToISO(bill.bill_date) : getISTISODate());
   };
 
-  const editTotal = editItems.reduce((s, it) => s + it.price * it.qty, 0);
+  const editSubtotal = editItems.reduce((s, it) => s + it.price * it.qty, 0);
+  const editDiscountNum = Number(editDiscountValue) || 0;
+  const editDiscountAmount = editDiscountType === 'percent'
+    ? Math.round(editSubtotal * editDiscountNum / 100)
+    : editDiscountNum;
+  const editAutoTotal = Math.max(0, editSubtotal - editDiscountAmount);
+  const editFinalTotal = editCustomTotal !== "" ? (Number(editCustomTotal) || 0) : editAutoTotal;
 
   const handleEditQtyChange = (idx: number, delta: number) => {
     if (idx < 0) return;
@@ -112,9 +126,10 @@ export default function BillReports() {
       await dbUpd('bills', editBill.id, {
         customer_name: editName || null,
         items: editItems,
-        total_amount: editTotal,
+        total_amount: editFinalTotal,
         payment_mode: editMode,
-        notes: editNotes || null
+        notes: editNotes || null,
+        bill_date: formatISTDate(editDate),
       });
       toast({ title: "Bill updated" });
       setEditBill(null);
@@ -144,7 +159,7 @@ export default function BillReports() {
   };
 
   const activeMenuItems = menuItems.filter(m => m.is_active);
-  const upiUrl = `upi://pay?pa=${UPI_ID}&pn=Morning+Bites&am=${editTotal}&cu=INR`;
+  const upiUrl = `upi://pay?pa=${UPI_ID}&pn=Morning+Bites&am=${editFinalTotal}&cu=INR`;
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-300">
@@ -288,43 +303,54 @@ export default function BillReports() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Customer Name</Label>
-              <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Walk-in" />
+            {/* Date + Customer Name */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  <CalendarDays className="w-3.5 h-3.5" /> Bill Date
+                </Label>
+                <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="h-9 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Customer</Label>
+                <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Walk-in" className="h-9 text-sm" />
+              </div>
             </div>
 
+            {/* Cart — current items */}
             <div className="space-y-2">
-              <Label>Items</Label>
-
-              {/* Legacy items not in active menu */}
-              {editItems.filter(it => !activeMenuItems.some(m => m.name === it.name)).map(it => {
-                const realIdx = editItems.indexOf(it);
-                return (
-                  <div key={realIdx} className="flex items-center justify-between bg-muted/30 p-2 rounded-lg">
-                    <div className="flex-1">
-                      <div className="text-sm font-medium">{it.name} ({it.option})</div>
-                      <div className="text-xs text-muted-foreground">₹{it.price} each</div>
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Cart</Label>
+              {editItems.length === 0 ? (
+                <div className="text-xs text-muted-foreground text-center py-3 bg-muted/20 rounded-lg border border-dashed border-border">No items</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {editItems.map((it, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-muted/30 px-3 py-2 rounded-lg border border-border">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold leading-tight truncate">{it.name}</div>
+                        <div className="text-xs text-muted-foreground">{it.option} · ₹{it.price}</div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={() => handleEditQtyChange(idx, -1)}>
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <span className="w-5 text-center font-bold text-sm">{it.qty}</span>
+                        <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={() => handleEditQtyChange(idx, 1)}>
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                        <span className="text-xs font-bold text-primary w-12 text-right">₹{it.price * it.qty}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(realIdx, -1)}>
-                        <Minus className="w-3 h-3" />
-                      </Button>
-                      <span className="w-5 text-center font-bold text-sm">{it.qty}</span>
-                      <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(realIdx, 1)}>
-                        <Plus className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
+                  ))}
+                </div>
+              )}
+            </div>
 
-              {/* Active menu items — collapsible groups */}
-              <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto pr-1">
+            {/* Add from Menu */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Add from Menu</Label>
+              <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
                 {activeMenuItems.map(item => {
-                  const itemQty = item.options.reduce((s: number, opt: any) => {
-                    const idx = editItems.findIndex(it => it.name === item.name && it.option === opt.name);
-                    return s + (idx >= 0 ? editItems[idx].qty : 0);
-                  }, 0);
                   const isOpen = editExpandedGroup === item.id;
                   return (
                     <div key={item.id} className="rounded-xl border border-border overflow-hidden">
@@ -337,33 +363,22 @@ export default function BillReports() {
                           {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
                           <span className="font-semibold text-sm">{item.name}</span>
                         </div>
-                        {itemQty > 0 && (
-                          <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{itemQty}</span>
-                        )}
                       </button>
                       {isOpen && (
                         <div className="flex flex-col gap-1 p-2 bg-background">
-                          {item.options.map((opt: any, optIdx: number) => {
-                            const existingIdx = editItems.findIndex(it => it.name === item.name && it.option === opt.name);
-                            const qty = existingIdx >= 0 ? editItems[existingIdx].qty : 0;
-                            return (
-                              <div key={optIdx} className={cn("flex items-center justify-between bg-muted/20 p-2 rounded-md", qty > 0 && "bg-primary/5")}>
-                                <div>
-                                  <div className="text-sm font-medium">{opt.name}</div>
-                                  <div className="text-xs text-muted-foreground">₹{opt.price}</div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleEditQtyChange(existingIdx, -1)} disabled={qty === 0}>
-                                    <Minus className="w-3 h-3" />
-                                  </Button>
-                                  <span className="w-5 text-center font-bold text-sm">{qty}</span>
-                                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleAddMenuItemToEdit(item, optIdx)}>
-                                    <Plus className="w-3 h-3" />
-                                  </Button>
-                                </div>
+                          {item.options.map((opt: any, optIdx: number) => (
+                            <button
+                              key={optIdx}
+                              onClick={() => handleAddMenuItemToEdit(item, optIdx)}
+                              className="flex items-center justify-between p-2 rounded-md bg-muted/20 hover:bg-primary/5 transition-colors text-left w-full"
+                            >
+                              <div>
+                                <div className="text-sm font-medium">{opt.name}</div>
+                                <div className="text-xs text-muted-foreground">₹{opt.price}</div>
                               </div>
-                            );
-                          })}
+                              <Plus className="w-4 h-4 text-primary shrink-0" />
+                            </button>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -372,13 +387,57 @@ export default function BillReports() {
               </div>
             </div>
 
-            <div className="flex justify-between items-center py-2 border-t border-border">
-              <Label className="text-muted-foreground">New Total</Label>
-              <span className="text-2xl font-black text-primary">₹{editTotal}</span>
+            {/* Discount */}
+            <div className="space-y-2 pt-1 border-t border-border">
+              <Label className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                <Tag className="w-3.5 h-3.5" /> Discount (Optional)
+              </Label>
+              <div className="flex gap-2">
+                <div className="flex rounded-xl border border-border overflow-hidden shrink-0">
+                  {(['amount', 'percent'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => { setEditDiscountType(t); setEditDiscountValue(""); setEditCustomTotal(""); }}
+                      className={cn("px-3 py-2 text-xs font-bold transition-all", editDiscountType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}
+                    >
+                      {t === 'amount' ? '₹' : '%'}
+                    </button>
+                  ))}
+                </div>
+                <Input
+                  type="number"
+                  placeholder={editDiscountType === 'amount' ? "₹ discount" : "% discount"}
+                  value={editDiscountValue}
+                  onChange={e => { setEditDiscountValue(e.target.value); setEditCustomTotal(""); }}
+                  className="flex-1 h-9"
+                />
+              </div>
+              {editDiscountAmount > 0 && (
+                <div className="text-xs text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200">
+                  Discount: −₹{editDiscountAmount}{editDiscountType === 'percent' ? ` (${editDiscountNum}% of ₹${editSubtotal})` : ''}
+                </div>
+              )}
             </div>
 
+            {/* Total */}
+            <div className="flex items-center justify-between py-2 border-t border-border gap-3">
+              <Label className="text-muted-foreground shrink-0">Total</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-black text-primary">₹{editFinalTotal}</span>
+                <Input
+                  type="number"
+                  placeholder="Override"
+                  value={editCustomTotal}
+                  onChange={e => setEditCustomTotal(e.target.value)}
+                  className="h-8 w-28 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Payment Mode */}
             <div className="space-y-2">
-              <Label>Payment Mode</Label>
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Payment Mode</Label>
               <RadioGroup value={editMode} onValueChange={setEditMode} className="grid grid-cols-3 gap-2">
                 {['cash', 'upi', 'scanpay'].map(m => (
                   <div key={m}>
@@ -391,8 +450,9 @@ export default function BillReports() {
               </RadioGroup>
             </div>
 
+            {/* Notes */}
             <div className="space-y-2">
-              <Label>Edit Notes / Description</Label>
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Notes</Label>
               <Textarea
                 value={editNotes}
                 onChange={e => setEditNotes(e.target.value)}
@@ -415,7 +475,7 @@ export default function BillReports() {
             <DialogTitle className="text-xl font-serif text-center">Scan & Pay</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4 py-4">
-            <div className="text-3xl font-black text-primary">₹{editTotal}</div>
+            <div className="text-3xl font-black text-primary">₹{editFinalTotal}</div>
             <div className="p-3 bg-white rounded-2xl border">
               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUrl)}`} alt="QR" className="w-40 h-40" />
             </div>

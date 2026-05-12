@@ -64,6 +64,11 @@ export default function Subscribed() {
   const [notifyModal, setNotifyModal] = useState<{ open: boolean; customer: any; type: string; cp: CustomerPackage | null }>({ open: false, customer: null, type: "", cp: null });
   const [skipModal, setSkipModal] = useState<{ open: boolean; customer: any; cp: CustomerPackage | null }>({ open: false, customer: null, cp: null });
   const [skipDate, setSkipDate] = useState(getISTISODate());
+  const [skipMode, setSkipMode] = useState<'single' | 'range' | 'multi'>('single');
+  const [skipRangeStart, setSkipRangeStart] = useState(getISTISODate());
+  const [skipRangeEnd, setSkipRangeEnd] = useState(getISTISODate());
+  const [skipMultiDates, setSkipMultiDates] = useState<string[]>([]);
+  const [skipAddDate, setSkipAddDate] = useState(getISTISODate());
   const [editModal, setEditModal] = useState<{ open: boolean; customer: any }>({ open: false, customer: null });
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -185,7 +190,6 @@ export default function Subscribed() {
           preferred_days: [], package_id: primaryPkg?.id || null, payment_mode: addPayMode
         });
         custId = res[0]?.id || null;
-        await dbIns('walkins', { name: addName, phone: addPhone, visit_date: today, is_deleted: false });
       }
 
       if (custId) {
@@ -438,27 +442,65 @@ export default function Subscribed() {
   const handleSkip = async () => {
     const c = skipModal.customer;
     const skipCp = skipModal.cp;
-    if (!c || !skipDate) return;
+    if (!c) return;
 
-    const d = new Date(skipDate + 'T00:00:00');
-    const dayName = d.toLocaleDateString('en-IN', { weekday: 'long' });
-    const dateStr = d.toLocaleDateString('en-IN');
+    let datesToSkip: string[] = [];
+    if (skipMode === 'single') {
+      if (!skipDate) return;
+      datesToSkip = [skipDate];
+    } else if (skipMode === 'range') {
+      if (!skipRangeStart || !skipRangeEnd || skipRangeStart > skipRangeEnd) {
+        toast({ variant: "destructive", description: "Select a valid date range" });
+        return;
+      }
+      let d = new Date(skipRangeStart + 'T00:00:00');
+      const end = new Date(skipRangeEnd + 'T00:00:00');
+      while (d <= end) {
+        datesToSkip.push(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d));
+        d.setDate(d.getDate() + 1);
+      }
+    } else {
+      if (skipMultiDates.length === 0) {
+        toast({ variant: "destructive", description: "Add at least one date" });
+        return;
+      }
+      datesToSkip = [...skipMultiDates];
+    }
+
     const pkg = skipCp ? packages.find(p => p.id === skipCp.package_id) : null;
     const pkgLine = pkg ? `\n📦 Package: ${pkg.name}` : '';
-    const msg = `Hello ${c.name},\n\nConfirmed — your Morning Bites pack is skipped for:\n\n📅 ${dayName}, ${dateStr}${pkgLine}\n\nYour remaining meals stay the same. See you on your next day!\n\nMorning Bites 🌿`;
+
+    let msg = '';
+    if (skipMode === 'single') {
+      const d = new Date(datesToSkip[0] + 'T00:00:00');
+      const dayName = d.toLocaleDateString('en-IN', { weekday: 'long' });
+      const dateStr = d.toLocaleDateString('en-IN');
+      msg = `Hello ${c.name},\n\nConfirmed — your Morning Bites pack is skipped for:\n\n📅 ${dayName}, ${dateStr}${pkgLine}\n\nYour remaining meals stay the same. See you on your next day!\n\nMorning Bites 🌿`;
+    } else if (skipMode === 'range') {
+      const start = new Date(datesToSkip[0] + 'T00:00:00').toLocaleDateString('en-IN');
+      const end = new Date(datesToSkip[datesToSkip.length - 1] + 'T00:00:00').toLocaleDateString('en-IN');
+      msg = `Hello ${c.name},\n\nConfirmed — your Morning Bites pack is skipped from:\n\n📅 ${start} to ${end} (${datesToSkip.length} days)${pkgLine}\n\nYour remaining meals stay the same.\n\nMorning Bites 🌿`;
+    } else {
+      const dateLines = datesToSkip.map(d => `📅 ${new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })}`).join('\n');
+      msg = `Hello ${c.name},\n\nConfirmed — your Morning Bites pack is skipped on:\n\n${dateLines}${pkgLine}\n\nYour remaining meals stay the same.\n\nMorning Bites 🌿`;
+    }
     window.open(`https://wa.me/91${c.phone}?text=${encodeURIComponent(msg)}`, '_blank');
 
     try {
-      await dbIns('meal_skips', {
-        customer_id: c.id,
-        skip_date: skipDate,
-        notified: true,
-        unskipped: false,
-        customer_package_id: skipCp?.id ?? null,
-      });
-      logActivity(c.id, 'meal_skipped', `Meal skipped for ${skipDate}${pkg ? ` (${pkg.name})` : ''}`);
+      for (const date of datesToSkip) {
+        await dbIns('meal_skips', {
+          customer_id: c.id,
+          skip_date: date,
+          notified: true,
+          unskipped: false,
+          customer_package_id: skipCp?.id ?? null,
+        });
+      }
+      logActivity(c.id, 'meal_skipped', `${datesToSkip.length} day(s) skipped${pkg ? ` (${pkg.name})` : ''}: ${datesToSkip.join(', ')}`);
       setSkipModal({ open: false, customer: null, cp: null });
-      toast({ title: "Meal skipped & WhatsApp opened" });
+      setSkipMode('single');
+      setSkipMultiDates([]);
+      toast({ title: `${datesToSkip.length} day${datesToSkip.length > 1 ? 's' : ''} skipped & WhatsApp opened` });
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -477,21 +519,24 @@ export default function Subscribed() {
     }
   };
 
-  // ─── Preferred days ───────────────────────────────────────────────────────
-  const handleTogglePrefDay = async (c: any, dayIdx: number) => {
-    let newPrefs = [...(c.preferred_days || [])];
+  // ─── Preferred days (per package when cp provided, else per customer) ────
+  const handleTogglePrefDay = async (c: any, dayIdx: number, cp: CustomerPackage | null) => {
+    const currentPrefs = cp ? [...(cp.preferred_days ?? [])] : [...(c.preferred_days || [])];
+    let newPrefs = currentPrefs;
     if (newPrefs.length === 0) {
       newPrefs = [0, 1, 2, 3, 4, 5].filter(d => d !== dayIdx);
+    } else if (newPrefs.includes(dayIdx)) {
+      newPrefs = newPrefs.filter(d => d !== dayIdx);
     } else {
-      if (newPrefs.includes(dayIdx)) {
-        newPrefs = newPrefs.filter(d => d !== dayIdx);
-      } else {
-        newPrefs.push(dayIdx);
-      }
+      newPrefs.push(dayIdx);
     }
     if (newPrefs.length === 6) newPrefs = [];
     try {
-      await dbUpd('customers', c.id, { preferred_days: newPrefs });
+      if (cp) {
+        await dbUpd('customer_packages', cp.id, { preferred_days: newPrefs });
+      } else {
+        await dbUpd('customers', c.id, { preferred_days: newPrefs });
+      }
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -703,7 +748,9 @@ export default function Subscribed() {
                     </div>
                     <div className="flex p-2 gap-1.5 bg-muted/10">
                       {weekDays.map((d, i) => {
-                        const isScheduled = c.preferred_days.length === 0 || c.preferred_days.includes(i);
+                        const cpPrefDays = cp?.preferred_days;
+                        const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
+                        const isScheduled = effectivePrefDays.length === 0 || effectivePrefDays.includes(i);
                         const skip = mealSkips.find(s =>
                           s.customer_id === c.id &&
                           s.skip_date === d.iso &&
@@ -719,7 +766,7 @@ export default function Subscribed() {
                               if (isSkipped && skip) {
                                 handleUnskip(skip.id, c.id);
                               } else {
-                                handleTogglePrefDay(c, i);
+                                handleTogglePrefDay(c, i, cp);
                               }
                             }}
                             className={cn(
@@ -981,12 +1028,12 @@ export default function Subscribed() {
       </Dialog>
 
       {/* ─── Skip Modal ─────────────────────────────────────────────────────── */}
-      <Dialog open={skipModal.open} onOpenChange={o => !o && setSkipModal({ open: false, customer: null, cp: null })}>
-        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6">
+      <Dialog open={skipModal.open} onOpenChange={o => { if (!o) { setSkipModal({ open: false, customer: null, cp: null }); setSkipMode('single'); setSkipMultiDates([]); } }}>
+        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl font-serif">Skip Meal</DialogTitle>
+            <DialogTitle className="text-xl font-serif">Skip Meal — {skipModal.customer?.name}</DialogTitle>
           </DialogHeader>
-          <div className="py-4 space-y-5">
+          <div className="py-3 space-y-4">
             {skipModal.cp && (() => {
               const pkg = packages.find(p => p.id === skipModal.cp!.package_id);
               return pkg ? (
@@ -995,15 +1042,114 @@ export default function Subscribed() {
                 </div>
               ) : null;
             })()}
-            <div className="space-y-2">
-              <Label>Skip Date</Label>
-              <Input type="date" value={skipDate} onChange={e => setSkipDate(e.target.value)} className="h-12 rounded-xl" />
+
+            {/* Mode selector */}
+            <div className="flex rounded-xl border border-border overflow-hidden">
+              {([
+                { key: 'single', label: 'Single Date' },
+                { key: 'range', label: 'Range' },
+                { key: 'multi', label: 'Multiple' },
+              ] as const).map(m => (
+                <button
+                  key={m.key}
+                  type="button"
+                  onClick={() => setSkipMode(m.key)}
+                  className={cn(
+                    "flex-1 py-2 text-xs font-bold transition-all",
+                    skipMode === m.key ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'
+                  )}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
-            <div className="p-3 bg-primary/5 rounded-xl text-sm text-primary border border-primary/20">
-              A skip confirmation message will be sent to {skipModal.customer?.name} on WhatsApp.
-            </div>
+
+            {/* Single date */}
+            {skipMode === 'single' && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground font-bold uppercase tracking-wider">Date</Label>
+                <Input type="date" value={skipDate} onChange={e => setSkipDate(e.target.value)} className="h-11 rounded-xl" />
+              </div>
+            )}
+
+            {/* Range */}
+            {skipMode === 'range' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground font-bold uppercase tracking-wider">From</Label>
+                    <Input type="date" value={skipRangeStart} onChange={e => setSkipRangeStart(e.target.value)} className="h-11 rounded-xl" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground font-bold uppercase tracking-wider">To</Label>
+                    <Input type="date" value={skipRangeEnd} onChange={e => setSkipRangeEnd(e.target.value)} className="h-11 rounded-xl" />
+                  </div>
+                </div>
+                {skipRangeStart && skipRangeEnd && skipRangeStart <= skipRangeEnd && (
+                  <div className="text-xs text-primary bg-primary/5 px-3 py-2 rounded-lg border border-primary/20">
+                    {(() => {
+                      let count = 0;
+                      let d = new Date(skipRangeStart + 'T00:00:00');
+                      const end = new Date(skipRangeEnd + 'T00:00:00');
+                      while (d <= end) { count++; d.setDate(d.getDate() + 1); }
+                      return `${count} day${count > 1 ? 's' : ''} will be skipped`;
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Multiple dates */}
+            {skipMode === 'multi' && (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={skipAddDate}
+                    onChange={e => setSkipAddDate(e.target.value)}
+                    className="flex-1 h-11 rounded-xl"
+                  />
+                  <Button
+                    variant="outline"
+                    className="h-11 px-4 rounded-xl font-bold border-primary/30 text-primary hover:bg-primary/5"
+                    onClick={() => {
+                      if (skipAddDate && !skipMultiDates.includes(skipAddDate)) {
+                        setSkipMultiDates(prev => [...prev, skipAddDate].sort());
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {skipMultiDates.length > 0 ? (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {skipMultiDates.map(d => (
+                      <div key={d} className="flex items-center justify-between bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5">
+                        <span className="text-xs font-semibold text-orange-800">
+                          {new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                        <button
+                          onClick={() => setSkipMultiDates(prev => prev.filter(x => x !== d))}
+                          className="text-orange-600 hover:text-orange-800 font-bold text-sm leading-none ml-2"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground text-center py-2 bg-muted/20 rounded-lg border border-dashed border-border">
+                    Add dates using the picker above
+                  </div>
+                )}
+                {skipMultiDates.length > 0 && (
+                  <div className="text-xs text-primary bg-primary/5 px-3 py-2 rounded-lg border border-primary/20">
+                    {skipMultiDates.length} date{skipMultiDates.length > 1 ? 's' : ''} selected
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="p-3 bg-orange-50 rounded-xl text-xs text-orange-700 border border-orange-200">
-              To remove a skip later, tap the orange day in the schedule grid.
+              To remove a skip, tap the orange day in the schedule grid.
             </div>
           </div>
           <DialogFooter>

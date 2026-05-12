@@ -21,3 +21,10 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+db-backup-20260428
+
+.env
+scripts/migrate-db.mjs
+.env.example
+.env.example

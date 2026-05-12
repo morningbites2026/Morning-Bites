@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { getISTISODate } from "@/lib/supabase";
 
 export default function SubDashboard() {
-  const { customers, mealSkips } = useStore();
+  const { customers, mealSkips, customerPackages, packages } = useStore();
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [listTab, setListTab] = useState<'today' | 'tomorrow'>('today');
 
@@ -21,18 +21,32 @@ export default function SubDashboard() {
   const tomorrowIndex = (tomorrow.getDay() + 6) % 7;
   const tomorrowIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(tomorrow);
 
-  const activeSubs = customers.filter(c => c.status === 'active');
+  const activeSubs = customers.filter(c => c.status === 'active' && !c.is_deleted);
 
-  const isScheduled = (c: any, dIndex: number) =>
-    c.preferred_days.length === 0 || c.preferred_days.includes(dIndex);
+  // Check if a customer (or their package) is scheduled for a given day index
+  const isCpScheduled = (cp: any, c: any, dIndex: number) => {
+    const prefDays = (cp?.preferred_days !== undefined && cp?.preferred_days !== null) ? cp.preferred_days : (c?.preferred_days || []);
+    return prefDays.length === 0 || prefDays.includes(dIndex);
+  };
+
+  // Returns true if the customer has at least one active package scheduled for dIndex
+  const isCustomerScheduled = (c: any, dIndex: number) => {
+    const cps = customerPackages.filter(cp => cp.customer_id === c.id && cp.status === 'active');
+    if (cps.length === 0) {
+      const pref = c.preferred_days || [];
+      return pref.length === 0 || pref.includes(dIndex);
+    }
+    return cps.some(cp => isCpScheduled(cp, c, dIndex));
+  };
+
+  // A customer is skipped for a day if ALL their active packages (or the customer itself) have a skip
+  const isCustomerSkippedForDay = (c: any, dayIso: string) =>
+    mealSkips.some(s => s.customer_id === c.id && s.skip_date === dayIso && !s.unskipped);
+
+  const todayPacks = activeSubs.filter(c => isCustomerScheduled(c, dayIndex) && !isCustomerSkippedForDay(c, todayIso));
+  const tomorrowPacks = activeSubs.filter(c => isCustomerScheduled(c, tomorrowIndex) && !isCustomerSkippedForDay(c, tomorrowIso));
 
   const todaySkips = mealSkips.filter(s => s.skip_date === todayIso && !s.unskipped);
-  const tomorrowSkips = mealSkips.filter(s => s.skip_date === tomorrowIso && !s.unskipped);
-  const skipCustomerIds = new Set(todaySkips.map(s => s.customer_id));
-  const tomorrowSkipIds = new Set(tomorrowSkips.map(s => s.customer_id));
-
-  const todayPacks = activeSubs.filter(c => isScheduled(c, dayIndex) && !skipCustomerIds.has(c.id));
-  const tomorrowPacks = activeSubs.filter(c => isScheduled(c, tomorrowIndex) && !tomorrowSkipIds.has(c.id));
 
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -52,25 +66,18 @@ export default function SubDashboard() {
 
   const weekGrid = days.map((d, i) => {
     const dayIso = getISOForDayIndex(i);
-    const daySkipIds = new Set(
-      mealSkips.filter(s => s.skip_date === dayIso && !s.unskipped).map(s => s.customer_id)
-    );
     return {
       day: d,
       index: i,
-      count: activeSubs.filter(c => isScheduled(c, i) && !daySkipIds.has(c.id)).length,
+      count: activeSubs.filter(c => isCustomerScheduled(c, i) && !isCustomerSkippedForDay(c, dayIso)).length,
       dateStr: getDateForDayIndex(i),
       dayIso,
-      skipIds: daySkipIds
     };
   });
 
   const selectedDayIso = selectedDay !== null ? getISOForDayIndex(selectedDay) : '';
-  const selectedDaySkipIds = new Set(
-    mealSkips.filter(s => s.skip_date === selectedDayIso && !s.unskipped).map(s => s.customer_id)
-  );
   const selectedDayCustomers = selectedDay !== null
-    ? activeSubs.filter(c => isScheduled(c, selectedDay) && !selectedDaySkipIds.has(c.id))
+    ? activeSubs.filter(c => isCustomerScheduled(c, selectedDay) && !isCustomerSkippedForDay(c, selectedDayIso))
     : [];
 
   const currentList = listTab === 'today' ? todayPacks : tomorrowPacks;
@@ -180,15 +187,25 @@ export default function SubDashboard() {
               No packs scheduled for {listTab === 'today' ? 'today' : 'tomorrow'}.
             </div>
           ) : (
-            currentList.map(c => (
-              <div key={c.id} className="p-4 flex justify-between items-center">
-                <div>
-                  <div className="font-medium text-sm">{c.name}</div>
-                  <div className="text-xs text-muted-foreground">{c.phone}</div>
+            currentList.map(c => {
+              const cps = customerPackages.filter(cp => cp.customer_id === c.id && cp.status === 'active');
+              const pkgNames = cps.map(cp => packages.find(p => p.id === cp.package_id)?.name).filter(Boolean).join(', ');
+              const totalUsed = cps.length > 0 ? cps.reduce((s, cp) => s + cp.used, 0) : c.used;
+              const totalMeals = cps.length > 0 ? cps.reduce((s, cp) => s + cp.total, 0) : c.total;
+              return (
+                <div key={c.id} className="p-4 flex justify-between items-center">
+                  <div>
+                    <div className="font-medium text-sm">{c.name}</div>
+                    {pkgNames ? (
+                      <div className="text-xs text-primary/70 font-medium mt-0.5">{pkgNames}</div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">{c.phone}</div>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{totalUsed} / {totalMeals} used</div>
                 </div>
-                <div className="text-xs text-muted-foreground">{c.used} / {c.total} used</div>
-              </div>
-            ))
+              );
+            })
           )}
         </CardContent>
       </Card>
@@ -208,15 +225,24 @@ export default function SubDashboard() {
               {selectedDayCustomers.length === 0 ? (
                 <div className="p-3 text-sm text-muted-foreground">No customers scheduled.</div>
               ) : (
-                selectedDayCustomers.map(c => (
-                  <div key={c.id} className="p-3 flex justify-between items-center">
-                    <div>
-                      <div className="text-sm font-medium">{c.name}</div>
-                      <div className="text-xs text-muted-foreground">{c.phone}</div>
+                selectedDayCustomers.map(c => {
+                  const cps = customerPackages.filter(cp => cp.customer_id === c.id && cp.status === 'active');
+                  const pkgNames = cps.map(cp => packages.find(p => p.id === cp.package_id)?.name).filter(Boolean).join(', ');
+                  const totalLeft = cps.length > 0 ? cps.reduce((s, cp) => s + (cp.total - cp.used), 0) : c.total - c.used;
+                  return (
+                    <div key={c.id} className="p-3 flex justify-between items-center">
+                      <div>
+                        <div className="text-sm font-medium">{c.name}</div>
+                        {pkgNames ? (
+                          <div className="text-xs text-primary/70 font-medium">{pkgNames}</div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">{c.phone}</div>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{totalLeft} left</div>
                     </div>
-                    <div className="text-xs text-muted-foreground">{c.total - c.used} left</div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

@@ -150,6 +150,7 @@ export interface CustomerPackage {
   status: 'active' | 'done' | 'cancelled';
   renew_count: number;
   last_renewed: string | null;
+  preferred_days: number[]; // DB migration required: ALTER TABLE customer_packages ADD COLUMN preferred_days JSONB DEFAULT '[]';
   created_at: string;
 }
 

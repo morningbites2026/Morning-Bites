@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { dbIns, getISTDateDisplay } from "@/lib/supabase";
+import { dbIns, getISTISODate, formatISTDate } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { UPI_ID } from "@/lib/supabase";
-import { Plus, Minus, Receipt, QrCode, Banknote, CreditCard, ChevronDown, ChevronRight, Tag } from "lucide-react";
+import { Plus, Minus, Receipt, QrCode, Banknote, CreditCard, ChevronDown, ChevronRight, Tag, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Billing() {
@@ -28,6 +28,7 @@ export default function Billing() {
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState("");
   const [customTotal, setCustomTotal] = useState("");
+  const [billDate, setBillDate] = useState(getISTISODate());
 
   const todayDayIdx = (new Date().getDay() + 6) % 7;
 
@@ -95,7 +96,7 @@ export default function Billing() {
         total_amount: finalTotal,
         payment_mode: paymentMode,
         notes: notes || null,
-        bill_date: getISTDateDisplay()
+        bill_date: formatISTDate(billDate)
       });
       toast({ title: "Bill generated successfully" });
       setCustomerName("");
@@ -105,6 +106,7 @@ export default function Billing() {
       setCashReceived("");
       setDiscountValue("");
       setCustomTotal("");
+      setBillDate(getISTISODate());
       setShowQrModal(false);
       refresh();
     } catch (err: any) {
@@ -126,13 +128,24 @@ export default function Billing() {
 
       <Card>
         <CardContent className="p-4 flex flex-col gap-4">
-          <div className="space-y-2">
-            <Label>Customer Name (Optional)</Label>
-            <Input
-              placeholder="Enter name"
-              value={customerName}
-              onChange={e => setCustomerName(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2 col-span-2 sm:col-span-1">
+              <Label>Customer Name (Optional)</Label>
+              <Input
+                placeholder="Enter name"
+                value={customerName}
+                onChange={e => setCustomerName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" /> Bill Date</Label>
+              <Input
+                type="date"
+                value={billDate}
+                onChange={e => setBillDate(e.target.value)}
+                className="h-10"
+              />
+            </div>
           </div>
 
           {/* Menu Items — grouped with collapse/expand */}
