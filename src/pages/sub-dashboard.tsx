@@ -192,17 +192,28 @@ export default function SubDashboard() {
               const pkgNames = cps.map(cp => packages.find(p => p.id === cp.package_id)?.name).filter(Boolean).join(', ');
               const totalUsed = cps.length > 0 ? cps.reduce((s, cp) => s + cp.used, 0) : c.used;
               const totalMeals = cps.length > 0 ? cps.reduce((s, cp) => s + cp.total, 0) : c.total;
+              const instructions = cps
+                .filter(cp => cp.instruction)
+                .map(cp => {
+                  const pkg = packages.find(p => p.id === cp.package_id);
+                  return cps.length > 1 && pkg ? `${pkg.name}: ${cp.instruction}` : cp.instruction!;
+                });
               return (
-                <div key={c.id} className="p-4 flex justify-between items-center">
-                  <div>
+                <div key={c.id} className="p-4 flex justify-between items-start">
+                  <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm">{c.name}</div>
                     {pkgNames ? (
                       <div className="text-xs text-primary/70 font-medium mt-0.5">{pkgNames}</div>
                     ) : (
                       <div className="text-xs text-muted-foreground">{c.phone}</div>
                     )}
+                    {instructions.length > 0 && (
+                      <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 italic">
+                        📝 {instructions.join(' · ')}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground">{totalUsed} / {totalMeals} used</div>
+                  <div className="text-xs text-muted-foreground shrink-0 ml-2">{totalUsed} / {totalMeals}</div>
                 </div>
               );
             })

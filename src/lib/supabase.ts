@@ -101,6 +101,8 @@ export interface Bill {
   payment_mode: 'cash' | 'upi' | 'scanpay';
   notes: string | null;
   bill_date: string;
+  discount_type?: 'amount' | 'percent';
+  discount_value?: number;
   created_at: string;
 }
 
@@ -151,6 +153,7 @@ export interface CustomerPackage {
   renew_count: number;
   last_renewed: string | null;
   preferred_days: number[]; // DB migration required: ALTER TABLE customer_packages ADD COLUMN preferred_days JSONB DEFAULT '[]';
+  instruction?: string;
   created_at: string;
 }
 
@@ -167,6 +170,7 @@ export interface Promotion {
   id: number;
   title: string;
   description: string;
+  image_url?: string;
   is_active: boolean;
   is_deleted: boolean;
   created_at: string;

@@ -29,6 +29,7 @@ export default function Walkins() {
   const [subPayMode, setSubPayMode] = useState<any>("cash");
   const [subCash, setSubCash] = useState("");
   const [subQrOpen, setSubQrOpen] = useState(false);
+  const [subInstructions, setSubInstructions] = useState<Record<number, string>>({});
 
   const [promoteWalkin, setPromoteWalkin] = useState<any>(null);
   const [selectedPromoId, setSelectedPromoId] = useState<string>("");
@@ -91,6 +92,7 @@ export default function Walkins() {
     setSubPayMode("cash");
     setSubCash("");
     setSubQrOpen(false);
+    setSubInstructions({});
     setIsSubModalOpen(true);
   };
 
@@ -164,6 +166,7 @@ export default function Walkins() {
             payment_mode: subPayMode,
             status: 'active',
             renew_count: existingCust ? existingCust.renew_count + 1 : 0,
+            instruction: subInstructions[pkg.id] || '',
           });
         }
       }
@@ -201,7 +204,7 @@ export default function Walkins() {
     }
 
     const msg = promo
-      ? `Hello ${promoteWalkin.name}! 🌱\n\n${promo.title}\n\n${promo.description}\n\nMorning Bites 🌿`
+      ? `Hello ${promoteWalkin.name}! 🌱\n\n${promo.title}\n\n${promo.description}${promo.image_url ? `\n\n📸 ${promo.image_url}` : ''}\n\nMorning Bites 🌿`
       : `Hello ${promoteWalkin.name}! 🌱\n\nWe're Morning Bites – your daily sprouts & healthy snack stall.\n\n✅ Get 10 fresh meals\n🍃 Healthy food every morning\n\nInterested? Visit us or reply to subscribe!\n\nMorning Bites 🌿`;
 
     // Open WhatsApp synchronously — no await before this
@@ -489,6 +492,23 @@ export default function Walkins() {
                   </div>
                 )}
 
+                {selectedPkgs.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground font-bold uppercase tracking-wider text-xs">Special Instructions (per package)</Label>
+                    {selectedPkgs.map(pkg => (
+                      <div key={pkg.id} className="space-y-1">
+                        <div className="text-xs font-semibold text-primary">{pkg.name}</div>
+                        <Input
+                          placeholder="e.g. No onions, extra sprouts..."
+                          value={subInstructions[pkg.id] || ''}
+                          onChange={e => setSubInstructions(prev => ({ ...prev, [pkg.id]: e.target.value }))}
+                          className="h-9 rounded-lg text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="space-y-3">
                   <Label className="text-muted-foreground font-bold uppercase tracking-wider text-xs">Payment Mode</Label>
                   <RadioGroup value={subPayMode} onValueChange={setSubPayMode} className="grid grid-cols-3 gap-3">
@@ -547,6 +567,12 @@ export default function Walkins() {
                       onClick={() => setSelectedPromoId(p.id.toString())}
                       className={`w-full text-left p-3 rounded-xl border-2 transition-all ${selectedPromoId === p.id.toString() ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}
                     >
+                      {p.image_url && (
+                        <div className="h-20 rounded-lg overflow-hidden border border-border mb-2">
+                          <img src={p.image_url} alt={p.title} className="w-full h-full object-cover"
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                        </div>
+                      )}
                       <div className="font-bold text-sm">{p.title}</div>
                       <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{p.description}</div>
                     </button>

@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Read(//c/Users/mpandit/.claude/projects/c--Projects-Morning-Bites-morningbites-cra/memory/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\mpandit\\.claude\\projects\\c--Projects-Morning-Bites-morningbites-cra\\memory"
     ]
   }
 }

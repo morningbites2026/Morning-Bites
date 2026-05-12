@@ -95,6 +95,8 @@ export default function Subscribed() {
   const [addPayMode, setAddPayMode] = useState("cash");
   const [addCash, setAddCash] = useState("");
   const [addQrOpen, setAddQrOpen] = useState(false);
+  const [addInstructions, setAddInstructions] = useState<Record<number, string>>({});
+  const [editInstructions, setEditInstructions] = useState<Record<number, string>>({});
 
   const [historyModal, setHistoryModal] = useState<{ open: boolean; customer: any }>({ open: false, customer: null });
   const [historyLogs, setHistoryLogs] = useState<ActivityLog[]>([]);
@@ -203,6 +205,7 @@ export default function Subscribed() {
             payment_mode: addPayMode,
             status: 'active',
             renew_count: existingCust ? existingCust.renew_count + 1 : 0,
+            instruction: addInstructions[pkg.id] || '',
           });
         }
       }
@@ -214,6 +217,7 @@ export default function Subscribed() {
       setAddModal(false);
       setAddQrOpen(false);
       setAddName(""); setAddPhone(""); setAddPkgIds([]); setAddPayMode("cash"); setAddCash("");
+      setAddInstructions({});
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -550,6 +554,10 @@ export default function Subscribed() {
     setEditPhone(c.phone);
     setEditPkg(c.package_id ? c.package_id.toString() : "");
     setEditMode(c.payment_mode);
+    const cps = getCustPacks(c.id);
+    const instr: Record<number, string> = {};
+    cps.forEach(cp => { instr[cp.id] = cp.instruction || ''; });
+    setEditInstructions(instr);
   };
 
   const saveEdit = async () => {
@@ -563,6 +571,9 @@ export default function Subscribed() {
       });
       const walkin = walkins.find(w => w.phone === c.phone || w.phone === editPhone);
       if (walkin) await dbUpd('walkins', walkin.id, { name: editName, phone: editPhone });
+      for (const [cpId, instr] of Object.entries(editInstructions)) {
+        await dbUpd('customer_packages', Number(cpId), { instruction: instr });
+      }
       await logActivity(c.id, 'edit', `Info updated: name=${editName}, phone=${editPhone}, pkg=${editPkg}, mode=${editMode}`);
       toast({ title: "Customer updated" });
       setEditModal({ open: false, customer: null });
@@ -620,7 +631,7 @@ export default function Subscribed() {
         <Button
           onClick={() => {
             setAddModal(true); setAddQrOpen(false); setAddName(""); setAddPhone("");
-            setAddPkgIds([]); setAddPayMode("cash"); setAddCash("");
+            setAddPkgIds([]); setAddPayMode("cash"); setAddCash(""); setAddInstructions({});
           }}
           className="rounded-full shadow-md font-bold px-4"
         >
@@ -955,6 +966,22 @@ export default function Subscribed() {
                     )}
                   </div>
                 )}
+                {selectedAddPkgs.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Special Instructions (per package)</Label>
+                    {selectedAddPkgs.map(pkg => (
+                      <div key={pkg.id} className="space-y-1">
+                        <div className="text-xs font-semibold text-primary">{pkg.name}</div>
+                        <Input
+                          placeholder="e.g. No onions, extra sprouts..."
+                          value={addInstructions[pkg.id] || ''}
+                          onChange={e => setAddInstructions(prev => ({ ...prev, [pkg.id]: e.target.value }))}
+                          className="h-9 rounded-lg text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button onClick={handleAddCustomer} className="w-full h-14 text-lg rounded-xl font-bold">
@@ -1240,6 +1267,26 @@ export default function Subscribed() {
                 ))}
               </RadioGroup>
             </div>
+            {editModal.customer && getCustPacks(editModal.customer.id).length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Package Instructions</Label>
+                {getCustPacks(editModal.customer.id).map(cp => {
+                  const pkg = packages.find(p => p.id === cp.package_id);
+                  return (
+                    <div key={cp.id} className="space-y-1">
+                      <div className="text-xs font-semibold text-primary">{pkg?.name || 'Package'} ({cp.total - cp.used} left)</div>
+                      <Input
+                        placeholder="e.g. No onions, extra sprouts..."
+                        value={editInstructions[cp.id] || ''}
+                        onChange={e => setEditInstructions(prev => ({ ...prev, [cp.id]: e.target.value }))}
+                        className="h-9 rounded-lg text-sm"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-800 border border-blue-200">
               Changes will also update this customer's Walk-in record.
             </div>

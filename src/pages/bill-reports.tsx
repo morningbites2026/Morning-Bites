@@ -27,6 +27,7 @@ export default function BillReports() {
   const [editItems, setEditItems] = useState<Array<{ name: string; option: string; price: number; qty: number }>>([]);
   const [editQrOpen, setEditQrOpen] = useState(false);
   const [editExpandedGroup, setEditExpandedGroup] = useState<number | null>(null);
+  const [showAddMenu, setShowAddMenu] = useState(false);
   const [editDiscountType, setEditDiscountType] = useState<'amount' | 'percent'>('amount');
   const [editDiscountValue, setEditDiscountValue] = useState("");
   const [editCustomTotal, setEditCustomTotal] = useState("");
@@ -81,10 +82,21 @@ export default function BillReports() {
     setEditItems(JSON.parse(JSON.stringify(bill.items)));
     setEditQrOpen(false);
     setEditExpandedGroup(null);
-    setEditDiscountType('amount');
-    setEditDiscountValue("");
-    setEditCustomTotal("");
+    setShowAddMenu(false);
     setEditDate(bill.bill_date ? billDateToISO(bill.bill_date) : getISTISODate());
+    setEditCustomTotal("");
+    // Load saved discount, or infer implied discount from items-subtotal vs total_amount
+    const savedVal = bill.discount_value ?? 0;
+    if (savedVal > 0) {
+      setEditDiscountType(bill.discount_type || 'amount');
+      setEditDiscountValue(savedVal.toString());
+    } else {
+      const itemsSubtotal = (bill.items as Array<{ price: number; qty: number }>)
+        .reduce((s, it) => s + it.price * it.qty, 0);
+      const implied = itemsSubtotal - bill.total_amount;
+      setEditDiscountType('amount');
+      setEditDiscountValue(implied > 0 ? implied.toString() : "");
+    }
   };
 
   const editSubtotal = editItems.reduce((s, it) => s + it.price * it.qty, 0);
@@ -130,6 +142,8 @@ export default function BillReports() {
         payment_mode: editMode,
         notes: editNotes || null,
         bill_date: formatISTDate(editDate),
+        discount_type: editDiscountType,
+        discount_value: editDiscountNum || 0,
       });
       toast({ title: "Bill updated" });
       setEditBill(null);
@@ -298,47 +312,51 @@ export default function BillReports() {
       <Dialog open={!!editBill} onOpenChange={(o) => !o && setEditBill(null)}>
         <DialogContent className="sm:max-w-md rounded-2xl w-[92%] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-base">
               <Edit className="w-4 h-4" /> Edit Bill
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            {/* Date + Customer Name */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  <CalendarDays className="w-3.5 h-3.5" /> Bill Date
+          <div className="space-y-3 py-1">
+
+            {/* Date + Customer */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                  <CalendarDays className="w-3 h-3" /> Date
                 </Label>
-                <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="h-9 text-sm" />
+                <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="h-8 text-sm" />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Customer</Label>
-                <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Walk-in" className="h-9 text-sm" />
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Customer</Label>
+                <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Walk-in" className="h-8 text-sm" />
               </div>
             </div>
 
-            {/* Cart — current items */}
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Cart</Label>
+            {/* Cart */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cart</Label>
+                {editSubtotal > 0 && <span className="text-xs text-muted-foreground">Subtotal: ₹{editSubtotal}</span>}
+              </div>
               {editItems.length === 0 ? (
-                <div className="text-xs text-muted-foreground text-center py-3 bg-muted/20 rounded-lg border border-dashed border-border">No items</div>
+                <div className="text-xs text-muted-foreground text-center py-2.5 bg-muted/20 rounded-lg border border-dashed border-border">No items</div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   {editItems.map((it, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-muted/30 px-3 py-2 rounded-lg border border-border">
+                    <div key={idx} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/20 border border-border/60">
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold leading-tight truncate">{it.name}</div>
-                        <div className="text-xs text-muted-foreground">{it.option} · ₹{it.price}</div>
+                        <span className="text-sm font-medium">{it.name}</span>
+                        <span className="text-xs text-muted-foreground ml-1.5">({it.option})</span>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={() => handleEditQtyChange(idx, -1)}>
-                          <Minus className="w-3 h-3" />
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="outline" size="icon" className="h-5 w-5 rounded-full p-0" onClick={() => handleEditQtyChange(idx, -1)}>
+                          <Minus className="w-2.5 h-2.5" />
                         </Button>
-                        <span className="w-5 text-center font-bold text-sm">{it.qty}</span>
-                        <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={() => handleEditQtyChange(idx, 1)}>
-                          <Plus className="w-3 h-3" />
+                        <span className="w-4 text-center font-bold text-xs">{it.qty}</span>
+                        <Button variant="outline" size="icon" className="h-5 w-5 rounded-full p-0" onClick={() => handleEditQtyChange(idx, 1)}>
+                          <Plus className="w-2.5 h-2.5" />
                         </Button>
-                        <span className="text-xs font-bold text-primary w-12 text-right">₹{it.price * it.qty}</span>
+                        <span className="text-xs font-bold text-primary w-10 text-right">₹{it.price * it.qty}</span>
                       </div>
                     </div>
                   ))}
@@ -346,103 +364,93 @@ export default function BillReports() {
               )}
             </div>
 
-            {/* Add from Menu */}
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Add from Menu</Label>
-              <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
-                {activeMenuItems.map(item => {
-                  const isOpen = editExpandedGroup === item.id;
-                  return (
-                    <div key={item.id} className="rounded-xl border border-border overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setEditExpandedGroup(prev => prev === item.id ? null : item.id)}
-                        className="w-full flex items-center justify-between px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-                          <span className="font-semibold text-sm">{item.name}</span>
-                        </div>
-                      </button>
-                      {isOpen && (
-                        <div className="flex flex-col gap-1 p-2 bg-background">
-                          {item.options.map((opt: any, optIdx: number) => (
-                            <button
-                              key={optIdx}
-                              onClick={() => handleAddMenuItemToEdit(item, optIdx)}
-                              className="flex items-center justify-between p-2 rounded-md bg-muted/20 hover:bg-primary/5 transition-colors text-left w-full"
-                            >
-                              <div>
-                                <div className="text-sm font-medium">{opt.name}</div>
-                                <div className="text-xs text-muted-foreground">₹{opt.price}</div>
-                              </div>
-                              <Plus className="w-4 h-4 text-primary shrink-0" />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            {/* Add from Menu — collapsed by default */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowAddMenu(p => !p)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-dashed border-primary/40 text-primary bg-primary/5 hover:bg-primary/10 transition-all text-sm font-semibold"
+              >
+                <span className="flex items-center gap-2"><Plus className="w-4 h-4" /> Add from Menu</span>
+                {showAddMenu ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              {showAddMenu && (
+                <div className="mt-1.5 flex flex-col gap-1 max-h-44 overflow-y-auto pr-0.5">
+                  {activeMenuItems.map(item => {
+                    const isOpen = editExpandedGroup === item.id;
+                    return (
+                      <div key={item.id} className="rounded-lg border border-border overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setEditExpandedGroup(prev => prev === item.id ? null : item.id)}
+                          className="w-full flex items-center gap-2 px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-semibold"
+                        >
+                          {isOpen ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                          {item.name}
+                        </button>
+                        {isOpen && (
+                          <div className="flex flex-col gap-0.5 p-1.5 bg-background">
+                            {item.options.map((opt: any, optIdx: number) => (
+                              <button key={optIdx} onClick={() => handleAddMenuItemToEdit(item, optIdx)}
+                                className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-muted/20 hover:bg-primary/5 transition-colors text-left w-full">
+                                <div>
+                                  <span className="text-sm font-medium">{opt.name}</span>
+                                  <span className="text-xs text-muted-foreground ml-1.5">₹{opt.price}</span>
+                                </div>
+                                <Plus className="w-3.5 h-3.5 text-primary shrink-0" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Discount */}
-            <div className="space-y-2 pt-1 border-t border-border">
-              <Label className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                <Tag className="w-3.5 h-3.5" /> Discount (Optional)
-              </Label>
-              <div className="flex gap-2">
-                <div className="flex rounded-xl border border-border overflow-hidden shrink-0">
+            {/* Discount + Total — combined panel */}
+            <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
                   {(['amount', 'percent'] as const).map(t => (
-                    <button
-                      key={t}
-                      type="button"
+                    <button key={t} type="button"
                       onClick={() => { setEditDiscountType(t); setEditDiscountValue(""); setEditCustomTotal(""); }}
-                      className={cn("px-3 py-2 text-xs font-bold transition-all", editDiscountType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}
+                      className={cn("px-2.5 py-1.5 text-xs font-bold transition-all", editDiscountType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}
                     >
                       {t === 'amount' ? '₹' : '%'}
                     </button>
                   ))}
                 </div>
-                <Input
-                  type="number"
-                  placeholder={editDiscountType === 'amount' ? "₹ discount" : "% discount"}
+                <Input type="number"
+                  placeholder={editDiscountType === 'amount' ? "₹ discount" : "% off"}
                   value={editDiscountValue}
                   onChange={e => { setEditDiscountValue(e.target.value); setEditCustomTotal(""); }}
-                  className="flex-1 h-9"
-                />
+                  className="flex-1 h-8 text-sm" />
               </div>
               {editDiscountAmount > 0 && (
-                <div className="text-xs text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200">
-                  Discount: −₹{editDiscountAmount}{editDiscountType === 'percent' ? ` (${editDiscountNum}% of ₹${editSubtotal})` : ''}
+                <div className="text-xs text-green-700 bg-green-50 dark:bg-green-950/30 px-2.5 py-1 rounded-lg border border-green-200 dark:border-green-900/50">
+                  Discount −₹{editDiscountAmount}{editDiscountType === 'percent' ? ` (${editDiscountNum}% of ₹${editSubtotal})` : ''}
                 </div>
               )}
-            </div>
-
-            {/* Total */}
-            <div className="flex items-center justify-between py-2 border-t border-border gap-3">
-              <Label className="text-muted-foreground shrink-0">Total</Label>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-black text-primary">₹{editFinalTotal}</span>
-                <Input
-                  type="number"
-                  placeholder="Override"
+              <div className="flex items-center gap-2 pt-1 border-t border-border">
+                <span className="text-xl font-black text-primary shrink-0">₹{editFinalTotal}</span>
+                <Input type="number" placeholder="Override total"
                   value={editCustomTotal}
                   onChange={e => setEditCustomTotal(e.target.value)}
-                  className="h-8 w-28 text-sm"
-                />
+                  className="flex-1 h-8 text-sm" />
               </div>
             </div>
 
             {/* Payment Mode */}
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Payment Mode</Label>
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Payment</Label>
               <RadioGroup value={editMode} onValueChange={setEditMode} className="grid grid-cols-3 gap-2">
-                {['cash', 'upi', 'scanpay'].map(m => (
+                {(['cash', 'upi', 'scanpay'] as const).map(m => (
                   <div key={m}>
                     <RadioGroupItem value={m} id={`em-${m}`} className="peer sr-only" />
-                    <Label htmlFor={`em-${m}`} className="flex items-center justify-center rounded-xl border-2 border-muted bg-popover p-2.5 hover:bg-accent peer-data-[state=checked]:border-primary peer-data-[state=checked]:text-primary cursor-pointer transition-all text-xs font-semibold capitalize">
+                    <Label htmlFor={`em-${m}`} className="flex items-center justify-center rounded-lg border-2 border-muted bg-popover py-2 hover:bg-accent peer-data-[state=checked]:border-primary peer-data-[state=checked]:text-primary cursor-pointer transition-all text-xs font-semibold capitalize">
                       {m === 'scanpay' ? 'Scan' : m}
                     </Label>
                   </div>
@@ -451,15 +459,12 @@ export default function BillReports() {
             </div>
 
             {/* Notes */}
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Notes</Label>
-              <Textarea
-                value={editNotes}
-                onChange={e => setEditNotes(e.target.value)}
-                placeholder="Add a note about this edit..."
-                className="resize-none"
-              />
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Notes</Label>
+              <Textarea value={editNotes} onChange={e => setEditNotes(e.target.value)}
+                placeholder="Add a note..." className="resize-none text-sm min-h-[60px]" />
             </div>
+
           </div>
           <DialogFooter>
             <Button onClick={handleSaveEdit} className="w-full h-12 rounded-xl text-base font-bold">

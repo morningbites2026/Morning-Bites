@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Megaphone, CalendarDays, Trash2, History, User } from "lucide-react";
+import { Plus, Megaphone, CalendarDays, Trash2, History, User, ImageIcon } from "lucide-react";
 
 export default function Promotions() {
   const { promotions, refresh } = useStore();
@@ -19,6 +19,7 @@ export default function Promotions() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const [historyModal, setHistoryModal] = useState<{ open: boolean; promo: any }>({ open: false, promo: null });
@@ -32,11 +33,12 @@ export default function Promotions() {
     }
     setIsSaving(true);
     try {
-      await dbIns('promotions', { title, description, is_active: true, is_deleted: false });
+      await dbIns('promotions', { title, description, image_url: imageUrl || null, is_active: true, is_deleted: false });
       toast({ title: "Promotion created!" });
       setIsModalOpen(false);
       setTitle("");
       setDescription("");
+      setImageUrl("");
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -116,6 +118,12 @@ export default function Promotions() {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground leading-relaxed">{promo.description}</p>
+                    {promo.image_url && (
+                      <div className="mt-2 h-24 rounded-xl overflow-hidden border border-border">
+                        <img src={promo.image_url} alt={promo.title} className="w-full h-full object-cover"
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                      </div>
+                    )}
                     <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground/70">
                       <CalendarDays className="w-3 h-3" />
                       {formatIST(promo.created_at)}
@@ -182,6 +190,21 @@ export default function Promotions() {
                 className="resize-none min-h-[120px]"
               />
               <p className="text-xs text-muted-foreground">This message will be sent as: "Hello [Name]! {title}\n\n{description}\n\nMorning Bites"</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2"><ImageIcon className="w-3.5 h-3.5" /> Image URL (Optional)</Label>
+              <Input
+                placeholder="Paste image link (Google Photos, Imgur, etc.)"
+                value={imageUrl}
+                onChange={e => setImageUrl(e.target.value)}
+                className="h-11 rounded-xl text-sm"
+              />
+              {imageUrl && (
+                <div className="h-28 rounded-xl overflow-hidden border border-border bg-muted/30">
+                  <img src={imageUrl} alt="Preview" className="w-full h-full object-cover"
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

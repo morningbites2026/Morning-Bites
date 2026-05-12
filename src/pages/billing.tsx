@@ -96,7 +96,9 @@ export default function Billing() {
         total_amount: finalTotal,
         payment_mode: paymentMode,
         notes: notes || null,
-        bill_date: formatISTDate(billDate)
+        bill_date: formatISTDate(billDate),
+        discount_type: discountType,
+        discount_value: discountNum,
       });
       toast({ title: "Bill generated successfully" });
       setCustomerName("");
