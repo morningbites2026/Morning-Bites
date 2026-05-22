@@ -22,7 +22,10 @@ function ensureSupabaseEnv(): void {
 
 export function formatIST(isoStr: string): string {
   try {
-    return new Date(isoStr).toLocaleString('en-IN', {
+    let s = isoStr.trim().replace(' ', 'T');
+    // If no timezone indicator, assume UTC (Supabase stores in UTC)
+    if (!/Z|[+-]\d{2}(:\d{2})?$/.test(s)) s += 'Z';
+    return new Date(s).toLocaleString('en-IN', {
       timeZone: 'Asia/Kolkata',
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true
@@ -39,7 +42,10 @@ export function getISTISODate(): string {
 
 // Returns current datetime as ISO string with IST offset (e.g. "2026-04-23T10:30:00.000+05:30")
 export function getISTTimestamp(): string {
-  return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Kolkata' }).replace(' ', 'T') + '.000+05:30';
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const d = new Date(Date.now() + IST_OFFSET_MS);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.000+05:30`;
 }
 
 // Returns current date in IST as localized string (e.g. "23/04/2026")

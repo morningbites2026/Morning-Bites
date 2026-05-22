@@ -448,6 +448,15 @@ export default function Billing() {
               </RadioGroup>
             </div>
 
+            {paymentMode === 'upi' && finalTotal > 0 && (
+              <a
+                href={upiUrl}
+                className="flex items-center justify-center gap-2 h-12 rounded-xl border-2 border-blue-300 bg-blue-50 text-blue-700 font-bold text-sm hover:bg-blue-100 transition-colors"
+              >
+                <CreditCard className="w-4 h-4" /> Open UPI App — ₹{finalTotal}
+              </a>
+            )}
+
             {paymentMode === 'cash' && (
               <div className="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-lg border border-amber-200 dark:border-amber-900/50 space-y-3">
                 <Label className="text-amber-900 dark:text-amber-500 font-bold">Cash Received</Label>
@@ -512,6 +521,9 @@ export default function Billing() {
               />
             </div>
             <div className="text-sm text-muted-foreground">Scan with any UPI app</div>
+            <a href={upiUrl} className="flex items-center gap-2 text-sm font-bold text-blue-600 underline underline-offset-2">
+              <CreditCard className="w-4 h-4" /> Open in UPI App
+            </a>
           </div>
           <DialogFooter className="flex-col sm:flex-col gap-3">
             <Button className="w-full h-12 text-lg rounded-xl" onClick={handleGenerateBill} disabled={isSubmitting}>

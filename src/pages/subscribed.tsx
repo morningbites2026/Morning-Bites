@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, getISTTimestamp, ActivityLog, UPI_ID, CustomerPackage, Package } from "@/lib/supabase";
+import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +55,16 @@ const buildActiveSubMsgMulti = (name: string, pkgs: Package[], startDate: string
   return `Hello ${name},\n\nWelcome to Morning Bites! 🌿\n\nYour subscriptions are now active!\n\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
 };
 
+const buildRenewalMsg = (name: string, pkgName: string, total: number, price: number, startDate: string) =>
+  `Hello ${name},\n\nYour Morning Bites subscription has been renewed! 🌿\n\n🔄 Renewal\n📦 Package: ${pkgName}\n🍽️ Meals: ${total}\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+
+const buildRenewalMsgMulti = (name: string, pkgs: Package[], startDate: string) => {
+  const pkgsList = pkgs.map((p, i) => `${i + 1}. ${p.name} — ${p.meals_count ?? 10} meals — ₹${p.price}`).join('\n');
+  const totalPrice = pkgs.reduce((s, p) => s + p.price, 0);
+  const totalMeals = pkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0);
+  return `Hello ${name},\n\nYour Morning Bites subscriptions have been renewed! 🌿\n\n🔄 Renewal\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+};
+
 export default function Subscribed() {
   const { customers, packages, walkins, mealSkips, customerPackages, refresh, searchQuery } = useStore();
   const { toast } = useToast();
@@ -89,6 +99,7 @@ export default function Subscribed() {
   const [cancelModal, setCancelModal] = useState<{ open: boolean; customer: any; cp: CustomerPackage | null }>({ open: false, customer: null, cp: null });
 
   const [addModal, setAddModal] = useState(false);
+  const [isRenewalMode, setIsRenewalMode] = useState(false);
   const [addName, setAddName] = useState("");
   const [addPhone, setAddPhone] = useState("");
   const [addPkgIds, setAddPkgIds] = useState<number[]>([]);
@@ -201,9 +212,13 @@ export default function Subscribed() {
     const dateDisplay = formatISTDate(today);
     const primaryMeals = primaryPkg?.meals_count ?? 10;
 
-    const msg = selectedAddPkgs.length === 1
-      ? buildActiveSubMsg(addName, primaryPkg?.name || 'Sprouts Salad', primaryMeals, primaryPkg?.price || 0, dateDisplay)
-      : buildActiveSubMsgMulti(addName, selectedAddPkgs, dateDisplay);
+    const msg = isRenewalMode
+      ? (selectedAddPkgs.length === 1
+          ? buildRenewalMsg(addName, primaryPkg?.name || 'Sprouts Salad', primaryMeals, primaryPkg?.price || 0, dateDisplay)
+          : buildRenewalMsgMulti(addName, selectedAddPkgs, dateDisplay))
+      : (selectedAddPkgs.length === 1
+          ? buildActiveSubMsg(addName, primaryPkg?.name || 'Sprouts Salad', primaryMeals, primaryPkg?.price || 0, dateDisplay)
+          : buildActiveSubMsgMulti(addName, selectedAddPkgs, dateDisplay));
     window.open(`https://wa.me/91${addPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 
     try {
@@ -242,7 +257,6 @@ export default function Subscribed() {
             renew_count: existingCust ? existingCust.renew_count + 1 : 0,
             instruction: addInstructions[pkg.id] || '',
             preferred_days: addSaladDays,
-            created_at: getISTTimestamp(),
           });
         }
       }
@@ -250,9 +264,10 @@ export default function Subscribed() {
       const pkgNames = selectedAddPkgs.map(p => p.name).join(', ');
       logActivity(custId, existingCust ? 'renewed' : 'subscribed', `${existingCust ? 'Renewed' : 'Subscribed'} to ${pkgNames} for ₹${addTotal}. Payment: ${addPayMode}`);
 
-      toast({ title: existingCust ? "Pack renewed!" : "Customer added and subscribed!" });
+      toast({ title: isRenewalMode ? "Subscription renewed!" : existingCust ? "Pack renewed!" : "Customer added and subscribed!" });
       setAddModal(false);
       setAddQrOpen(false);
+      setIsRenewalMode(false);
       setAddName(""); setAddPhone(""); setAddPkgIds([]); setAddPayMode("cash"); setAddCash("");
       setAddInstructions({}); setAddSaladDays([]);
       refresh();
@@ -353,49 +368,18 @@ export default function Subscribed() {
   };
 
   // ─── Renew ────────────────────────────────────────────────────────────────
-  const handleRenew = async (c: any, cp: CustomerPackage | null) => {
-    if (!window.confirm(`Renew pack for ${c.name}?`)) return;
-
+  const handleRenew = (c: any, cp: CustomerPackage | null) => {
     const pkgId = cp ? cp.package_id : c.package_id;
-    const pkg = packages.find(p => p.id === pkgId);
-    const today = getISTISODate();
-    const dateDisplay = formatISTDate(today);
-    const mealsCount = pkg?.meals_count ?? cp?.total ?? 10;
-
-    const msg = buildActiveSubMsg(c.name, pkg?.name || 'Sprouts Salad', mealsCount, pkg?.price || 0, dateDisplay);
-    window.open(`https://wa.me/91${c.phone}?text=${encodeURIComponent(msg)}`, '_blank');
-
-    try {
-      if (cp) {
-        await dbUpd('customer_packages', cp.id, {
-          used: 0,
-          total: mealsCount,
-          renew_count: cp.renew_count + 1,
-          last_renewed: today,
-          pack_start_date: today,
-          status: 'active'
-        });
-        await dbUpd('customers', c.id, {
-          used: 0, total: mealsCount,
-          renew_count: c.renew_count + 1,
-          last_renewed: today, pack_start_date: today, status: 'active'
-        });
-      } else {
-        await dbUpd('customers', c.id, {
-          used: 0, total: mealsCount,
-          renew_count: c.renew_count + 1,
-          last_renewed: today, pack_start_date: today, status: 'active'
-        });
-      }
-      // Clear all future skips on renewal
-      await dbUpdWhere('meal_skips', `customer_id=eq.${c.id}&skip_date=gte.${today}&unskipped=eq.false`, { unskipped: true });
-
-      logActivity(c.id, 'renewed', `Pack renewed (×${c.renew_count + 1}). Package: ${pkg?.name || 'unknown'}`);
-      toast({ title: "Pack renewed successfully!" });
-      refresh();
-    } catch (err: any) {
-      toast({ variant: "destructive", description: err.message });
-    }
+    setIsRenewalMode(true);
+    setAddModal(true);
+    setAddQrOpen(false);
+    setAddName(c.name);
+    setAddPhone(c.phone);
+    setAddPkgIds(pkgId ? [pkgId] : []);
+    setAddPayMode(cp?.payment_mode || c.payment_mode || 'cash');
+    setAddCash('');
+    setAddInstructions({});
+    setAddSaladDays(cp?.preferred_days || []);
   };
 
   // ─── Cancel ───────────────────────────────────────────────────────────────
@@ -972,10 +956,12 @@ export default function Subscribed() {
       </div>
 
       {/* ─── Add Customer Modal ─────────────────────────────────────────────── */}
-      <Dialog open={addModal} onOpenChange={v => { setAddModal(v); if (!v) setAddQrOpen(false); }}>
+      <Dialog open={addModal} onOpenChange={v => { setAddModal(v); if (!v) { setAddQrOpen(false); setIsRenewalMode(false); } }}>
         <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl font-serif">Add Subscriber</DialogTitle>
+            <DialogTitle className="text-xl font-serif">
+              {isRenewalMode ? `Renew — ${addName}` : 'Add Subscriber'}
+            </DialogTitle>
           </DialogHeader>
           {addQrOpen ? (
             <div className="flex flex-col items-center gap-4 py-4">
@@ -983,6 +969,9 @@ export default function Subscribed() {
               <div className="p-3 bg-white rounded-2xl border">
                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(addUpiUrl)}`} alt="QR" className="w-40 h-40" />
               </div>
+              <a href={addUpiUrl} className="flex items-center gap-2 text-sm font-bold text-blue-600 underline underline-offset-2">
+                <CreditCard className="w-4 h-4" /> Open in UPI App
+              </a>
               <div className="flex gap-2 w-full">
                 <Button className="flex-1 h-12 rounded-xl font-bold" onClick={handleAddCustomer}>Payment Done</Button>
                 <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setAddQrOpen(false)}>Back</Button>
@@ -1045,6 +1034,11 @@ export default function Subscribed() {
                       </div>
                     )}
                   </div>
+                )}
+                {addPayMode === 'upi' && addTotal > 0 && (
+                  <a href={addUpiUrl} className="flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-blue-300 bg-blue-50 text-blue-700 font-bold text-sm hover:bg-blue-100 transition-colors">
+                    <CreditCard className="w-4 h-4" /> Open UPI App — ₹{addTotal}
+                  </a>
                 )}
                 {selectedAddPkgs.length > 0 && (
                   <div className="space-y-2">
@@ -1458,6 +1452,9 @@ export default function Subscribed() {
               <div className="p-3 bg-white rounded-2xl border">
                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(addPkgUpiUrl)}`} alt="QR" className="w-40 h-40" />
               </div>
+              <a href={addPkgUpiUrl} className="flex items-center gap-2 text-sm font-bold text-blue-600 underline underline-offset-2">
+                <CreditCard className="w-4 h-4" /> Open in UPI App
+              </a>
               <div className="flex gap-2 w-full">
                 <Button className="flex-1 h-12 rounded-xl font-bold" onClick={handleAddPackageToCustomer}>Payment Done</Button>
                 <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setAddPkgQrOpen(false)}>Back</Button>
@@ -1502,6 +1499,11 @@ export default function Subscribed() {
                       </div>
                     )}
                   </div>
+                )}
+                {addPkgPayMode === 'upi' && addPkgTotal > 0 && (
+                  <a href={addPkgUpiUrl} className="flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-blue-300 bg-blue-50 text-blue-700 font-bold text-sm hover:bg-blue-100 transition-colors">
+                    <CreditCard className="w-4 h-4" /> Open UPI App — ₹{addPkgTotal}
+                  </a>
                 )}
               </div>
               <DialogFooter>
