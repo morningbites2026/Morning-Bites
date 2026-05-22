@@ -17,6 +17,8 @@ type StoreState = {
   refresh: () => Promise<void>;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+  editingBill: Bill | null;
+  setEditingBill: (b: Bill | null) => void;
 };
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -34,6 +36,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [editingBill, setEditingBill] = useState<Bill | null>(null);
   const { toast } = useToast();
 
   const loadData = useCallback(async () => {
@@ -96,7 +99,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider value={{
       customers, walkins, menuItems, bills, preorders, mealSkips, packages, promotions, customerPackages,
       isLoading, error, refresh: loadData,
-      searchQuery, setSearchQuery
+      searchQuery, setSearchQuery,
+      editingBill, setEditingBill
     }}>
       {children}
     </StoreContext.Provider>

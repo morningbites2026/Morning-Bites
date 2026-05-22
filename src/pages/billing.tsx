@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useStore } from "@/lib/store";
-import { dbIns, getISTISODate, formatISTDate } from "@/lib/supabase";
+import { dbIns, dbUpd, getISTISODate, formatISTDate, getISTTimestamp } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,12 +11,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { UPI_ID } from "@/lib/supabase";
-import { Plus, Minus, Receipt, QrCode, Banknote, CreditCard, ChevronDown, ChevronRight, Tag, CalendarDays } from "lucide-react";
+import { Plus, Minus, Receipt, QrCode, Banknote, CreditCard, ChevronDown, ChevronRight, Tag, CalendarDays, Edit, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Convert "D/M/YYYY" or "DD/MM/YYYY" to "YYYY-MM-DD"
+const billDateToISO = (dateStr: string): string => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('/');
+  if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  return dateStr;
+};
+
 export default function Billing() {
-  const { menuItems, refresh } = useStore();
+  const { menuItems, refresh, editingBill, setEditingBill } = useStore();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const [customerName, setCustomerName] = useState("");
   const [notes, setNotes] = useState("");
@@ -29,6 +39,43 @@ export default function Billing() {
   const [discountValue, setDiscountValue] = useState("");
   const [customTotal, setCustomTotal] = useState("");
   const [billDate, setBillDate] = useState(getISTISODate());
+  // Items from the original bill that no longer exist in the active menu
+  const [extraItems, setExtraItems] = useState<Array<{ name: string; option: string; price: number; qty: number }>>([]);
+
+  const isEditMode = !!editingBill;
+
+  // Pre-populate form when entering edit mode
+  useEffect(() => {
+    if (editingBill) {
+      setCustomerName(editingBill.customer_name || "");
+      setNotes(editingBill.notes || "");
+      setPaymentMode(editingBill.payment_mode as any);
+      setBillDate(editingBill.bill_date ? billDateToISO(editingBill.bill_date) : getISTISODate());
+      const savedVal = editingBill.discount_value ?? 0;
+      setDiscountType(editingBill.discount_type || 'amount');
+      setDiscountValue(savedVal > 0 ? savedVal.toString() : "");
+      setCustomTotal("");
+      setCashReceived("");
+
+      // Match bill items to current menu items by name + option
+      const newQtys: Record<string, number> = {};
+      const unmatched: Array<{ name: string; option: string; price: number; qty: number }> = [];
+      editingBill.items.forEach(item => {
+        const mi = menuItems.find(m => m.name === item.name);
+        const optIdx = mi?.options.findIndex(o => o.name === item.option) ?? -1;
+        if (mi && optIdx >= 0) {
+          newQtys[`${mi.id}-${optIdx}`] = item.qty;
+        } else {
+          unmatched.push({ ...item });
+        }
+      });
+      setQuantities(newQtys);
+      setExtraItems(unmatched);
+      setExpandedGroup(null);
+    } else {
+      setExtraItems([]);
+    }
+  }, [editingBill]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const todayDayIdx = (new Date().getDay() + 6) % 7;
 
@@ -68,19 +115,23 @@ export default function Billing() {
     });
   });
 
+  const extraSubtotal = extraItems.reduce((s, it) => s + it.price * it.qty, 0);
+  const fullSubtotal = subtotal + extraSubtotal;
+
   const discountNum = Number(discountValue) || 0;
   const discountAmount = discountType === 'percent'
-    ? Math.round(subtotal * discountNum / 100)
+    ? Math.round(fullSubtotal * discountNum / 100)
     : discountNum;
 
-  const autoTotal = Math.max(0, subtotal - discountAmount);
+  const autoTotal = Math.max(0, fullSubtotal - discountAmount);
   const finalTotal = customTotal !== "" ? Number(customTotal) || 0 : autoTotal;
 
   const cashReceivedNum = Number(cashReceived) || 0;
   const change = cashReceivedNum - finalTotal;
 
   const handleGenerateBill = async () => {
-    if (cartItems.length === 0) {
+    const allCartItems = [...cartItems, ...extraItems.filter(it => it.qty > 0)];
+    if (allCartItems.length === 0) {
       toast({ variant: "destructive", description: "Add at least one item." });
       return;
     }
@@ -90,27 +141,47 @@ export default function Billing() {
     }
     setIsSubmitting(true);
     try {
-      await dbIns('bills', {
-        customer_name: customerName || null,
-        items: cartItems,
-        total_amount: finalTotal,
-        payment_mode: paymentMode,
-        notes: notes || null,
-        bill_date: formatISTDate(billDate),
-        discount_type: discountType,
-        discount_value: discountNum,
-      });
-      toast({ title: "Bill generated successfully" });
-      setCustomerName("");
-      setNotes("");
-      setPaymentMode("cash");
-      setQuantities({});
-      setCashReceived("");
-      setDiscountValue("");
-      setCustomTotal("");
-      setBillDate(getISTISODate());
-      setShowQrModal(false);
-      refresh();
+      if (isEditMode && editingBill) {
+        await dbUpd('bills', editingBill.id, {
+          customer_name: customerName || null,
+          items: allCartItems,
+          total_amount: finalTotal,
+          payment_mode: paymentMode,
+          notes: notes || null,
+          bill_date: formatISTDate(billDate),
+          discount_type: discountType,
+          discount_value: discountNum,
+        });
+        toast({ title: "Bill updated successfully" });
+        setEditingBill(null);
+        setShowQrModal(false);
+        refresh();
+        navigate('/bill-reports');
+      } else {
+        await dbIns('bills', {
+          customer_name: customerName || null,
+          items: allCartItems,
+          total_amount: finalTotal,
+          payment_mode: paymentMode,
+          notes: notes || null,
+          bill_date: formatISTDate(billDate),
+          discount_type: discountType,
+          discount_value: discountNum,
+          created_at: getISTTimestamp(),
+        });
+        toast({ title: "Bill generated successfully" });
+        setCustomerName("");
+        setNotes("");
+        setPaymentMode("cash");
+        setQuantities({});
+        setCashReceived("");
+        setDiscountValue("");
+        setCustomTotal("");
+        setBillDate(getISTISODate());
+        setExpandedGroup(null);
+        setShowQrModal(false);
+        refresh();
+      }
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
     } finally {
@@ -124,9 +195,49 @@ export default function Billing() {
     <div className="flex flex-col gap-6 animate-in fade-in duration-300">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold flex items-center gap-2">
-          <Receipt className="w-5 h-5 text-primary" /> New Bill
+          {isEditMode
+            ? <><Edit className="w-5 h-5 text-primary" /> Edit Bill</>
+            : <><Receipt className="w-5 h-5 text-primary" /> New Bill</>
+          }
         </h2>
+        {isEditMode && (
+          <Button variant="outline" size="sm" className="rounded-full gap-1.5 text-xs" onClick={() => setEditingBill(null)}>
+            <X className="w-3.5 h-3.5" /> Cancel Edit
+          </Button>
+        )}
       </div>
+
+      {/* Originally Placed — shown only in edit mode */}
+      {isEditMode && editingBill && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/50">
+          <div className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400 mb-2 flex items-center gap-1.5">
+            <Receipt className="w-3.5 h-3.5" /> Originally Placed
+          </div>
+          <div className="space-y-1">
+            {editingBill.customer_name && (
+              <div className="text-sm text-amber-900 dark:text-amber-300">
+                <span className="font-medium">Customer:</span> {editingBill.customer_name}
+              </div>
+            )}
+            {editingBill.items.map((it, idx) => (
+              <div key={idx} className="flex justify-between text-sm text-amber-900 dark:text-amber-300">
+                <span>{it.qty}× {it.name} ({it.option})</span>
+                <span className="font-medium">₹{it.price * it.qty}</span>
+              </div>
+            ))}
+            {(editingBill.discount_value ?? 0) > 0 && (
+              <div className="text-xs text-amber-700 dark:text-amber-400 mt-1 pt-1 border-t border-amber-200">
+                Discount: {editingBill.discount_type === 'percent'
+                  ? `${editingBill.discount_value}%`
+                  : `₹${editingBill.discount_value}`}
+              </div>
+            )}
+            <div className="text-sm font-bold text-amber-900 dark:text-amber-300 pt-1 border-t border-amber-200">
+              Total: ₹{editingBill.total_amount}
+            </div>
+          </div>
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-4 flex flex-col gap-4">
@@ -217,7 +328,7 @@ export default function Billing() {
           </div>
 
           {/* Cart Summary */}
-          {cartItems.length > 0 && (
+          {(cartItems.length > 0 || extraItems.length > 0) && (
             <div className="bg-muted/20 rounded-xl border border-border p-3 space-y-1.5">
               <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Cart</div>
               {cartItems.map((it, idx) => (
@@ -226,9 +337,37 @@ export default function Billing() {
                   <span className="font-semibold">₹{it.price * it.qty}</span>
                 </div>
               ))}
+              {/* Extra items (from original bill, not in current menu) */}
+              {extraItems.length > 0 && (
+                <>
+                  {cartItems.length > 0 && <div className="border-t border-border/50 my-1" />}
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Original items (not in current menu)</div>
+                  {extraItems.map((it, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-sm">
+                      <div className="flex items-center gap-2 flex-1">
+                        <Button variant="outline" size="icon" className="h-5 w-5 rounded-full p-0 shrink-0"
+                          onClick={() => setExtraItems(prev => {
+                            const next = [...prev];
+                            next[idx] = { ...next[idx], qty: Math.max(0, next[idx].qty - 1) };
+                            return next.filter((_, i) => i !== idx || next[idx].qty > 0);
+                          })}>
+                          <Minus className="w-2.5 h-2.5" />
+                        </Button>
+                        <span className="text-xs font-bold w-4 text-center">{it.qty}</span>
+                        <Button variant="outline" size="icon" className="h-5 w-5 rounded-full p-0 shrink-0"
+                          onClick={() => setExtraItems(prev => { const next = [...prev]; next[idx] = { ...next[idx], qty: next[idx].qty + 1 }; return next; })}>
+                          <Plus className="w-2.5 h-2.5" />
+                        </Button>
+                        <span className="text-muted-foreground">{it.name} ({it.option})</span>
+                      </div>
+                      <span className="font-semibold shrink-0">₹{it.price * it.qty}</span>
+                    </div>
+                  ))}
+                </>
+              )}
               <div className="pt-1 border-t border-border flex justify-between text-sm font-bold">
                 <span>Subtotal</span>
-                <span>₹{subtotal}</span>
+                <span>₹{fullSubtotal}</span>
               </div>
             </div>
           )}
@@ -260,7 +399,7 @@ export default function Billing() {
               </div>
               {discountAmount > 0 && (
                 <div className="text-xs text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200">
-                  Discount: −₹{discountAmount} {discountType === 'percent' ? `(${discountNum}% of ₹${subtotal})` : ''}
+                  Discount: −₹{discountAmount} {discountType === 'percent' ? `(${discountNum}% of ₹${fullSubtotal})` : ''}
                 </div>
               )}
             </div>
@@ -339,14 +478,22 @@ export default function Billing() {
             </div>
           </div>
         </CardContent>
-        <CardFooter className="p-4 pt-0">
+        <CardFooter className="p-4 pt-0 flex flex-col gap-2">
           <Button
             className="w-full text-lg h-14 rounded-xl shadow-lg transition-all"
             onClick={handleGenerateBill}
-            disabled={isSubmitting || cartItems.length === 0}
+            disabled={isSubmitting || (cartItems.length === 0 && extraItems.length === 0)}
           >
-            {paymentMode === 'scanpay' ? "Generate & Show QR" : "Generate Bill"}
+            {isEditMode
+              ? (paymentMode === 'scanpay' ? "Show QR & Update Bill" : "Update Bill")
+              : (paymentMode === 'scanpay' ? "Generate & Show QR" : "Generate Bill")
+            }
           </Button>
+          {isEditMode && (
+            <Button variant="outline" className="w-full h-10 rounded-xl" onClick={() => setEditingBill(null)}>
+              Cancel — Back to Reports
+            </Button>
+          )}
         </CardFooter>
       </Card>
 
@@ -368,7 +515,7 @@ export default function Billing() {
           </div>
           <DialogFooter className="flex-col sm:flex-col gap-3">
             <Button className="w-full h-12 text-lg rounded-xl" onClick={handleGenerateBill} disabled={isSubmitting}>
-              Payment Done
+              {isEditMode ? "Payment Done — Update Bill" : "Payment Done"}
             </Button>
             <Button variant="outline" className="w-full h-12 rounded-xl" onClick={() => { setShowQrModal(false); setPaymentMode('cash'); }}>
               Change to Cash

@@ -37,6 +37,11 @@ export function getISTISODate(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
+// Returns current datetime as ISO string with IST offset (e.g. "2026-04-23T10:30:00.000+05:30")
+export function getISTTimestamp(): string {
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Kolkata' }).replace(' ', 'T') + '.000+05:30';
+}
+
 // Returns current date in IST as localized string (e.g. "23/04/2026")
 export function getISTDateDisplay(): string {
   return new Date().toLocaleDateString('en-IN', {
@@ -271,6 +276,7 @@ export async function logActivity(customerId: number | null, action: string, des
       action,
       description,
       meta: meta || null,
+      created_at: getISTTimestamp(),
     });
   } catch (e) {
     console.warn('Activity log skipped (table may not exist yet):', e);

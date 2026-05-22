@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package } from "@/lib/supabase";
+import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, getISTTimestamp, ActivityLog, UPI_ID, CustomerPackage, Package } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +97,38 @@ export default function Subscribed() {
   const [addQrOpen, setAddQrOpen] = useState(false);
   const [addInstructions, setAddInstructions] = useState<Record<number, string>>({});
   const [editInstructions, setEditInstructions] = useState<Record<number, string>>({});
+  // Salad days: preferred delivery days per subscription
+  const [addSaladDays, setAddSaladDays] = useState<number[]>([]);
+  const [editSaladDaysByCp, setEditSaladDaysByCp] = useState<Record<number, number[]>>({});
+
+  const toggleAddSaladDay = (dayIdx: number) => {
+    setAddSaladDays(prev => {
+      if (prev.length === 0) return [0, 1, 2, 3, 4, 5].filter(d => d !== dayIdx);
+      if (prev.includes(dayIdx)) {
+        const next = prev.filter(d => d !== dayIdx);
+        return next.length === 6 ? [] : next;
+      }
+      const next = [...prev, dayIdx].sort();
+      return next.length === 6 ? [] : next;
+    });
+  };
+
+  const toggleEditSaladDay = (cpId: number, dayIdx: number) => {
+    setEditSaladDaysByCp(prev => {
+      const current = prev[cpId] || [];
+      let next: number[];
+      if (current.length === 0) {
+        next = [0, 1, 2, 3, 4, 5].filter(d => d !== dayIdx);
+      } else if (current.includes(dayIdx)) {
+        next = current.filter(d => d !== dayIdx);
+        if (next.length === 6) next = [];
+      } else {
+        next = [...current, dayIdx].sort();
+        if (next.length === 6) next = [];
+      }
+      return { ...prev, [cpId]: next };
+    });
+  };
 
   const [historyModal, setHistoryModal] = useState<{ open: boolean; customer: any }>({ open: false, customer: null });
   const [historyLogs, setHistoryLogs] = useState<ActivityLog[]>([]);
@@ -209,6 +241,8 @@ export default function Subscribed() {
             status: 'active',
             renew_count: existingCust ? existingCust.renew_count + 1 : 0,
             instruction: addInstructions[pkg.id] || '',
+            preferred_days: addSaladDays,
+            created_at: getISTTimestamp(),
           });
         }
       }
@@ -220,7 +254,7 @@ export default function Subscribed() {
       setAddModal(false);
       setAddQrOpen(false);
       setAddName(""); setAddPhone(""); setAddPkgIds([]); setAddPayMode("cash"); setAddCash("");
-      setAddInstructions({});
+      setAddInstructions({}); setAddSaladDays([]);
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -559,8 +593,13 @@ export default function Subscribed() {
     setEditMode(c.payment_mode);
     const cps = getCustPacks(c.id);
     const instr: Record<number, string> = {};
-    cps.forEach(cp => { instr[cp.id] = cp.instruction || ''; });
+    const saladDays: Record<number, number[]> = {};
+    cps.forEach(cp => {
+      instr[cp.id] = cp.instruction || '';
+      saladDays[cp.id] = cp.preferred_days || [];
+    });
     setEditInstructions(instr);
+    setEditSaladDaysByCp(saladDays);
   };
 
   const saveEdit = async () => {
@@ -574,10 +613,17 @@ export default function Subscribed() {
       });
       const walkin = walkins.find(w => w.phone === c.phone || w.phone === editPhone);
       if (walkin) await dbUpd('walkins', walkin.id, { name: editName, phone: editPhone });
-      for (const [cpId, instr] of Object.entries(editInstructions)) {
-        await dbUpd('customer_packages', Number(cpId), { instruction: instr });
+      // Update instruction + preferred_days per customer_package in one call each
+      const cps = getCustPacks(c.id);
+      for (const cp of cps) {
+        const updates: Record<string, unknown> = {};
+        if (editInstructions[cp.id] !== undefined) updates.instruction = editInstructions[cp.id];
+        if (editSaladDaysByCp[cp.id] !== undefined) updates.preferred_days = editSaladDaysByCp[cp.id];
+        if (Object.keys(updates).length > 0) {
+          await dbUpd('customer_packages', cp.id, updates);
+        }
       }
-      await logActivity(c.id, 'edit', `Info updated: name=${editName}, phone=${editPhone}, pkg=${editPkg}, mode=${editMode}`);
+      await logActivity(c.id, 'edit', `Info updated: name=${editName}, phone=${editPhone}, mode=${editMode}`);
       toast({ title: "Customer updated" });
       setEditModal({ open: false, customer: null });
       refresh();
@@ -656,7 +702,7 @@ export default function Subscribed() {
         <Button
           onClick={() => {
             setAddModal(true); setAddQrOpen(false); setAddName(""); setAddPhone("");
-            setAddPkgIds([]); setAddPayMode("cash"); setAddCash(""); setAddInstructions({});
+            setAddPkgIds([]); setAddPayMode("cash"); setAddCash(""); setAddInstructions({}); setAddSaladDays([]);
           }}
           className="rounded-full shadow-md font-bold px-4"
         >
@@ -1016,6 +1062,34 @@ export default function Subscribed() {
                     ))}
                   </div>
                 )}
+
+                {/* Salad Days */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Salad Days (Delivery Schedule)</Label>
+                  <div className="flex gap-1.5">
+                    {DAYS.map((day, idx) => {
+                      const isSelected = addSaladDays.length === 0 || addSaladDays.includes(idx);
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => toggleAddSaladDay(idx)}
+                          className={cn(
+                            "flex-1 py-2 rounded-lg text-xs font-bold border-2 transition-all",
+                            isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
+                          )}
+                        >
+                          {day[0]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {addSaladDays.length === 0
+                      ? 'All days (Mon–Sat) — tap a day to exclude it'
+                      : `${addSaladDays.length} day${addSaladDays.length > 1 ? 's' : ''} selected`}
+                  </div>
+                </div>
               </div>
               <DialogFooter>
                 <Button onClick={handleAddCustomer} className="w-full h-14 text-lg rounded-xl font-bold">
@@ -1302,19 +1376,44 @@ export default function Subscribed() {
               </RadioGroup>
             </div>
             {editModal.customer && getCustPacks(editModal.customer.id).length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Package Instructions</Label>
+              <div className="space-y-3">
+                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Per Package Settings</Label>
                 {getCustPacks(editModal.customer.id).map(cp => {
                   const pkg = packages.find(p => p.id === cp.package_id);
+                  const saladDays = editSaladDaysByCp[cp.id] || [];
                   return (
-                    <div key={cp.id} className="space-y-1">
-                      <div className="text-xs font-semibold text-primary">{pkg?.name || 'Package'} ({cp.total - cp.used} left)</div>
+                    <div key={cp.id} className="p-3 rounded-xl border border-border bg-muted/10 space-y-2.5">
+                      <div className="text-xs font-bold text-primary">{pkg?.name || 'Package'} ({cp.total - cp.used} left)</div>
                       <Input
                         placeholder="e.g. No onions, extra sprouts..."
                         value={editInstructions[cp.id] || ''}
                         onChange={e => setEditInstructions(prev => ({ ...prev, [cp.id]: e.target.value }))}
                         className="h-9 rounded-lg text-sm"
                       />
+                      <div className="space-y-1.5">
+                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Salad Days</div>
+                        <div className="flex gap-1">
+                          {DAYS.map((day, idx) => {
+                            const isSelected = saladDays.length === 0 || saladDays.includes(idx);
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => toggleEditSaladDay(cp.id, idx)}
+                                className={cn(
+                                  "flex-1 py-1.5 rounded-lg text-[10px] font-bold border-2 transition-all",
+                                  isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
+                                )}
+                              >
+                                {day[0]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {saladDays.length === 0 ? 'All days (Mon–Sat)' : `${saladDays.length} day${saladDays.length > 1 ? 's' : ''} selected`}
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
