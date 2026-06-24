@@ -353,13 +353,13 @@ export default function Dashboard() {
             <div className="col-span-2 grid grid-cols-2 gap-3 mt-1">
               <Card className="border-green-200 bg-green-50 shadow-sm">
                 <CardContent className="p-4">
-                  <div className="text-xs font-bold text-green-700 uppercase tracking-wider">Pending Advance</div>
+                  <div className="text-xs font-bold text-green-700 uppercase tracking-wider">Customer Credit</div>
                   <div className="text-xl font-black text-green-800 mt-1">₹{pendingAdvance}</div>
                 </CardContent>
               </Card>
               <Card className="border-red-200 bg-red-50 shadow-sm">
                 <CardContent className="p-4">
-                  <div className="text-xs font-bold text-red-700 uppercase tracking-wider">Pending Outst.</div>
+                  <div className="text-xs font-bold text-red-700 uppercase tracking-wider">Pending Amount</div>
                   <div className="text-xl font-black text-red-800 mt-1">₹{pendingOutstanding}</div>
                 </CardContent>
               </Card>

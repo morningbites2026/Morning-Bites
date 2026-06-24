@@ -446,7 +446,7 @@ export default function Billing() {
             {/* Advance & Outstanding Balances */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="text-sm">Advance Balance</Label>
+                <Label className="text-sm">Customer Credit</Label>
                 <Input
                   type="number"
                   placeholder="₹ Amount"
@@ -456,7 +456,7 @@ export default function Billing() {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-sm">Outstanding Balance</Label>
+                <Label className="text-sm">Pending Amount</Label>
                 <Input
                   type="number"
                   placeholder="₹ Amount"

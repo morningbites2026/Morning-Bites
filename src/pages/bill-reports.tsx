@@ -50,6 +50,12 @@ export default function BillReports() {
   const upiRev = filteredBills.filter(b => b.payment_mode === 'upi').reduce((s, b) => s + b.total_amount, 0);
   const scanRev = filteredBills.filter(b => b.payment_mode === 'scanpay').reduce((s, b) => s + b.total_amount, 0);
 
+  const pendingAmountBills = bills.filter(b => (b.outstanding_balance || 0) > 0 && b.outstanding_status === 'pending');
+  const totalPendingAmount = pendingAmountBills.reduce((s, b) => s + (b.outstanding_balance || 0), 0);
+
+  const customerCreditBills = bills.filter(b => (b.advance_balance || 0) > 0 && b.advance_status === 'pending');
+  const totalCustomerCredit = customerCreditBills.reduce((s, b) => s + (b.advance_balance || 0), 0);
+
   const handleEditOpen = (bill: any) => {
     setEditingBill(bill);
     navigate('/billing');
@@ -70,7 +76,7 @@ export default function BillReports() {
   const handleMarkReceived = async (id: number) => {
     try {
       await dbUpd('bills', id, { outstanding_status: 'received' });
-      toast({ title: "Outstanding balance marked as received" });
+      toast({ title: "Pending amount marked as received" });
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -80,7 +86,7 @@ export default function BillReports() {
   const handleMarkPaid = async (id: number) => {
     try {
       await dbUpd('bills', id, { advance_status: 'paid' });
-      toast({ title: "Advance balance marked as paid" });
+      toast({ title: "Customer credit marked as refunded / adjusted" });
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -125,9 +131,11 @@ export default function BillReports() {
       </div>
 
       <Tabs defaultValue="summary" className="w-full mt-1">
-        <TabsList className="w-full bg-transparent border-b border-border rounded-none p-0 h-auto justify-start gap-4">
-          <TabsTrigger value="summary" className="data-[state=active]:border-primary data-[state=active]:text-primary border-b-2 border-transparent rounded-none px-2 py-2 text-sm">Summary</TabsTrigger>
-          <TabsTrigger value="history" className="data-[state=active]:border-primary data-[state=active]:text-primary border-b-2 border-transparent rounded-none px-2 py-2 text-sm">History ({filteredBills.length})</TabsTrigger>
+        <TabsList className="w-full bg-transparent border-b border-border rounded-none p-0 h-auto justify-start gap-4 overflow-x-auto flex-nowrap hide-scrollbar">
+          <TabsTrigger value="summary" className="data-[state=active]:border-primary data-[state=active]:text-primary border-b-2 border-transparent rounded-none px-2 py-2 text-sm whitespace-nowrap">Summary</TabsTrigger>
+          <TabsTrigger value="history" className="data-[state=active]:border-primary data-[state=active]:text-primary border-b-2 border-transparent rounded-none px-2 py-2 text-sm whitespace-nowrap">History ({filteredBills.length})</TabsTrigger>
+          <TabsTrigger value="pending-amount" className="data-[state=active]:border-primary data-[state=active]:text-primary border-b-2 border-transparent rounded-none px-2 py-2 text-sm whitespace-nowrap">Pending Amount (₹{totalPendingAmount})</TabsTrigger>
+          <TabsTrigger value="customer-credit" className="data-[state=active]:border-primary data-[state=active]:text-primary border-b-2 border-transparent rounded-none px-2 py-2 text-sm whitespace-nowrap">Customer Credit (₹{totalCustomerCredit})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="summary" className="mt-4 space-y-4">
@@ -215,17 +223,17 @@ export default function BillReports() {
                         <div className="flex flex-col gap-1.5 mt-3">
                           {(bill.advance_balance || 0) > 0 && (
                             <div className="flex items-center justify-between text-xs p-2 bg-green-50 rounded-lg border border-green-200">
-                              <span className="font-bold text-green-800">Advance: ₹{bill.advance_balance}</span>
+                              <span className="font-bold text-green-800">Customer Credit: ₹{bill.advance_balance}</span>
                               {bill.advance_status === 'pending' ? (
-                                <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 text-green-700 hover:text-green-800 hover:bg-green-100 border-green-300" onClick={() => handleMarkPaid(bill.id)}>Mark Paid</Button>
+                                <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 text-green-700 hover:text-green-800 hover:bg-green-100 border-green-300" onClick={() => handleMarkPaid(bill.id)}>Refund / Adjust</Button>
                               ) : (
-                                <span className="text-[10px] font-black tracking-wider text-green-600 bg-green-100 px-1.5 py-0.5 rounded">PAID</span>
+                                <span className="text-[10px] font-black tracking-wider text-green-600 bg-green-100 px-1.5 py-0.5 rounded">REFUNDED/ADJUSTED</span>
                               )}
                             </div>
                           )}
                           {(bill.outstanding_balance || 0) > 0 && (
                             <div className="flex items-center justify-between text-xs p-2 bg-red-50 rounded-lg border border-red-200">
-                              <span className="font-bold text-red-800">Outstanding: ₹{bill.outstanding_balance}</span>
+                              <span className="font-bold text-red-800">Pending: ₹{bill.outstanding_balance}</span>
                               {bill.outstanding_status === 'pending' ? (
                                 <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 text-red-700 hover:text-red-800 hover:bg-red-100 border-red-300" onClick={() => handleMarkReceived(bill.id)}>Mark Received</Button>
                               ) : (
@@ -257,6 +265,108 @@ export default function BillReports() {
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="pending-amount" className="mt-4">
+          <div className="space-y-3 pb-8">
+            {pendingAmountBills.length === 0 ? (
+              <div className="text-center p-8 text-muted-foreground flex flex-col items-center">
+                <ReceiptText className="w-12 h-12 opacity-20 mb-2" />
+                <p>No pending amount bills found.</p>
+              </div>
+            ) : (
+              pendingAmountBills.map(bill => (
+                <Card key={bill.id} className="border-border shadow-sm overflow-hidden">
+                  <div className="p-3 bg-muted/30 flex justify-between items-center border-b border-border">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                        <CalendarDays className="w-3 h-3" />
+                        {bill.bill_date}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground/70">
+                        {formatIST(bill.created_at)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {getModeIcon(bill.payment_mode)}
+                      <span className="text-xs uppercase tracking-wider font-bold opacity-70">{bill.payment_mode}</span>
+                    </div>
+                  </div>
+                  <CardContent className="p-4 flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-base">{bill.customer_name || "Walk-in"}</div>
+                      <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                        {bill.items.map((it, idx) => (
+                          <div key={idx}>{it.qty}× {it.name} ({it.option}) — ₹{it.price * it.qty}</div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between text-xs p-2 bg-red-50 rounded-lg border border-red-200 mt-3 min-w-[200px]">
+                        <span className="font-bold text-red-800">Pending: ₹{bill.outstanding_balance}</span>
+                        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 text-red-700 hover:text-red-800 hover:bg-red-100 border-red-300" onClick={() => handleMarkReceived(bill.id)}>Mark Received</Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-3">
+                      <div className="text-xl font-black text-primary">₹{bill.total_amount}</div>
+                      <Button variant="outline" size="icon" className="h-8 w-8 rounded-full" onClick={() => handleEditOpen(bill)} title="Edit bill">
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="customer-credit" className="mt-4">
+          <div className="space-y-3 pb-8">
+            {customerCreditBills.length === 0 ? (
+              <div className="text-center p-8 text-muted-foreground flex flex-col items-center">
+                <ReceiptText className="w-12 h-12 opacity-20 mb-2" />
+                <p>No customer credit bills found.</p>
+              </div>
+            ) : (
+              customerCreditBills.map(bill => (
+                <Card key={bill.id} className="border-border shadow-sm overflow-hidden">
+                  <div className="p-3 bg-muted/30 flex justify-between items-center border-b border-border">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                        <CalendarDays className="w-3 h-3" />
+                        {bill.bill_date}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground/70">
+                        {formatIST(bill.created_at)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {getModeIcon(bill.payment_mode)}
+                      <span className="text-xs uppercase tracking-wider font-bold opacity-70">{bill.payment_mode}</span>
+                    </div>
+                  </div>
+                  <CardContent className="p-4 flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-base">{bill.customer_name || "Walk-in"}</div>
+                      <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                        {bill.items.map((it, idx) => (
+                          <div key={idx}>{it.qty}× {it.name} ({it.option}) — ₹{it.price * it.qty}</div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between text-xs p-2 bg-green-50 rounded-lg border border-green-200 mt-3 min-w-[200px]">
+                        <span className="font-bold text-green-800">Customer Credit: ₹{bill.advance_balance}</span>
+                        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 text-green-700 hover:text-green-800 hover:bg-green-100 border-green-300" onClick={() => handleMarkPaid(bill.id)}>Refund / Adjust</Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-3">
+                      <div className="text-xl font-black text-primary">₹{bill.total_amount}</div>
+                      <Button variant="outline" size="icon" className="h-8 w-8 rounded-full" onClick={() => handleEditOpen(bill)} title="Edit bill">
+                        <Edit className="w-4 h-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
