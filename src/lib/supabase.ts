@@ -114,6 +114,10 @@ export interface Bill {
   bill_date: string;
   discount_type?: 'amount' | 'percent';
   discount_value?: number;
+  advance_balance?: number;
+  outstanding_balance?: number;
+  advance_status?: 'pending' | 'paid';
+  outstanding_status?: 'pending' | 'received';
   created_at: string;
 }
 

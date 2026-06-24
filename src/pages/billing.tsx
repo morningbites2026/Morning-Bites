@@ -39,6 +39,8 @@ export default function Billing() {
   const [discountValue, setDiscountValue] = useState("");
   const [customTotal, setCustomTotal] = useState("");
   const [billDate, setBillDate] = useState(getISTISODate());
+  const [advanceBalance, setAdvanceBalance] = useState("");
+  const [outstandingBalance, setOutstandingBalance] = useState("");
   // Items from the original bill that no longer exist in the active menu
   const [extraItems, setExtraItems] = useState<Array<{ name: string; option: string; price: number; qty: number }>>([]);
 
@@ -56,6 +58,8 @@ export default function Billing() {
       setDiscountValue(savedVal > 0 ? savedVal.toString() : "");
       setCustomTotal("");
       setCashReceived("");
+      setAdvanceBalance((editingBill.advance_balance ?? 0) > 0 ? editingBill.advance_balance!.toString() : "");
+      setOutstandingBalance((editingBill.outstanding_balance ?? 0) > 0 ? editingBill.outstanding_balance!.toString() : "");
 
       // Match bill items to current menu items by name + option
       const newQtys: Record<string, number> = {};
@@ -140,8 +144,15 @@ export default function Billing() {
       return;
     }
     setIsSubmitting(true);
+
+    const advanceNum = Number(advanceBalance) || 0;
+    const outstandingNum = Number(outstandingBalance) || 0;
+
     try {
       if (isEditMode && editingBill) {
+        const advStatus = advanceNum > 0 ? (editingBill.advance_balance === advanceNum ? editingBill.advance_status || 'pending' : 'pending') : 'paid';
+        const outStatus = outstandingNum > 0 ? (editingBill.outstanding_balance === outstandingNum ? editingBill.outstanding_status || 'pending' : 'pending') : 'received';
+
         await dbUpd('bills', editingBill.id, {
           customer_name: customerName || null,
           items: allCartItems,
@@ -151,6 +162,10 @@ export default function Billing() {
           bill_date: formatISTDate(billDate),
           discount_type: discountType,
           discount_value: discountNum,
+          advance_balance: advanceNum,
+          outstanding_balance: outstandingNum,
+          advance_status: advStatus,
+          outstanding_status: outStatus,
         });
         toast({ title: "Bill updated successfully" });
         setEditingBill(null);
@@ -167,6 +182,10 @@ export default function Billing() {
           bill_date: formatISTDate(billDate),
           discount_type: discountType,
           discount_value: discountNum,
+          advance_balance: advanceNum,
+          outstanding_balance: outstandingNum,
+          advance_status: advanceNum > 0 ? 'pending' : 'paid',
+          outstanding_status: outstandingNum > 0 ? 'pending' : 'received',
           created_at: getISTTimestamp(),
         });
         toast({ title: "Bill generated successfully" });
@@ -177,6 +196,8 @@ export default function Billing() {
         setCashReceived("");
         setDiscountValue("");
         setCustomTotal("");
+        setAdvanceBalance("");
+        setOutstandingBalance("");
         setBillDate(getISTISODate());
         setExpandedGroup(null);
         setShowQrModal(false);
@@ -419,6 +440,30 @@ export default function Billing() {
                   />
                   <div className="text-[10px] text-muted-foreground">Edit to override calculated total</div>
                 </div>
+              </div>
+            </div>
+
+            {/* Advance & Outstanding Balances */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-sm">Advance Balance</Label>
+                <Input
+                  type="number"
+                  placeholder="₹ Amount"
+                  value={advanceBalance}
+                  onChange={e => setAdvanceBalance(e.target.value)}
+                  className="h-10 border-green-200 focus-visible:ring-green-500 bg-green-50/30"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm">Outstanding Balance</Label>
+                <Input
+                  type="number"
+                  placeholder="₹ Amount"
+                  value={outstandingBalance}
+                  onChange={e => setOutstandingBalance(e.target.value)}
+                  className="h-10 border-red-200 focus-visible:ring-red-500 bg-red-50/30"
+                />
               </div>
             </div>
 

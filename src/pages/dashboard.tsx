@@ -80,6 +80,9 @@ export default function Dashboard() {
   const monthBills = bills.filter((b) => new Date(b.created_at) >= ms);
   const monthRevenue = monthBills.reduce((s, b) => s + b.total_amount, 0);
 
+  const pendingAdvance = bills.filter(b => b.advance_status === 'pending').reduce((s, b) => s + (b.advance_balance || 0), 0);
+  const pendingOutstanding = bills.filter(b => b.outstanding_status === 'pending').reduce((s, b) => s + (b.outstanding_balance || 0), 0);
+
   const filteredHistory = useMemo(() => {
     const q = historySearch.trim().toLowerCase();
     const from = fromDate ? new Date(fromDate + "T00:00:00") : null;
@@ -346,6 +349,21 @@ export default function Dashboard() {
                 </Button>
               </CardContent>
             </Card>
+
+            <div className="col-span-2 grid grid-cols-2 gap-3 mt-1">
+              <Card className="border-green-200 bg-green-50 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="text-xs font-bold text-green-700 uppercase tracking-wider">Pending Advance</div>
+                  <div className="text-xl font-black text-green-800 mt-1">₹{pendingAdvance}</div>
+                </CardContent>
+              </Card>
+              <Card className="border-red-200 bg-red-50 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="text-xs font-bold text-red-700 uppercase tracking-wider">Pending Outst.</div>
+                  <div className="text-xl font-black text-red-800 mt-1">₹{pendingOutstanding}</div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </TabsContent>
 

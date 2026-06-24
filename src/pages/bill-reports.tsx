@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { dbDel, formatIST, getISTISODate } from "@/lib/supabase";
+import { dbDel, dbUpd, formatIST, getISTISODate } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Edit, Trash2, CalendarDays, ReceiptText, QrCode, Banknote, CreditCard } from "lucide-react";
 
@@ -64,6 +64,26 @@ export default function BillReports() {
       } catch (err: any) {
         toast({ variant: "destructive", description: err.message });
       }
+    }
+  };
+
+  const handleMarkReceived = async (id: number) => {
+    try {
+      await dbUpd('bills', id, { outstanding_status: 'received' });
+      toast({ title: "Outstanding balance marked as received" });
+      refresh();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: err.message });
+    }
+  };
+
+  const handleMarkPaid = async (id: number) => {
+    try {
+      await dbUpd('bills', id, { advance_status: 'paid' });
+      toast({ title: "Advance balance marked as paid" });
+      refresh();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: err.message });
     }
   };
 
@@ -190,6 +210,30 @@ export default function BillReports() {
                       )}
                       {bill.notes && (
                         <div className="text-xs italic text-muted-foreground mt-2 border-l-2 border-primary/30 pl-2">"{bill.notes}"</div>
+                      )}
+                      {((bill.advance_balance || 0) > 0 || (bill.outstanding_balance || 0) > 0) && (
+                        <div className="flex flex-col gap-1.5 mt-3">
+                          {(bill.advance_balance || 0) > 0 && (
+                            <div className="flex items-center justify-between text-xs p-2 bg-green-50 rounded-lg border border-green-200">
+                              <span className="font-bold text-green-800">Advance: ₹{bill.advance_balance}</span>
+                              {bill.advance_status === 'pending' ? (
+                                <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 text-green-700 hover:text-green-800 hover:bg-green-100 border-green-300" onClick={() => handleMarkPaid(bill.id)}>Mark Paid</Button>
+                              ) : (
+                                <span className="text-[10px] font-black tracking-wider text-green-600 bg-green-100 px-1.5 py-0.5 rounded">PAID</span>
+                              )}
+                            </div>
+                          )}
+                          {(bill.outstanding_balance || 0) > 0 && (
+                            <div className="flex items-center justify-between text-xs p-2 bg-red-50 rounded-lg border border-red-200">
+                              <span className="font-bold text-red-800">Outstanding: ₹{bill.outstanding_balance}</span>
+                              {bill.outstanding_status === 'pending' ? (
+                                <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 text-red-700 hover:text-red-800 hover:bg-red-100 border-red-300" onClick={() => handleMarkReceived(bill.id)}>Mark Received</Button>
+                              ) : (
+                                <span className="text-[10px] font-black tracking-wider text-red-600 bg-red-100 px-1.5 py-0.5 rounded">RECEIVED</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-3">
