@@ -148,6 +148,7 @@ export default function Subscribed() {
   const [instrEdits, setInstrEdits] = useState<Record<number, string>>({});
 
   const [mealUsedModal, setMealUsedModal] = useState<{ open: boolean; customer: any; used: number; total: number; pkgName: string }>({ open: false, customer: null, used: 0, total: 0, pkgName: '' });
+  const [useMealQty, setUseMealQty] = useState<{ [key: number]: number }>({});
 
   // ─── helpers ──────────────────────────────────────────────────────────────
   const activeSubs = customers.filter(c => !c.is_deleted);
@@ -319,23 +320,24 @@ export default function Subscribed() {
   };
 
   // ─── Mark meal used ───────────────────────────────────────────────────────
-  const handleUseMeal = async (c: any, cp: CustomerPackage | null) => {
+  const handleUseMeal = async (c: any, cp: CustomerPackage | null, qty: number = 1) => {
     const currentUsed = cp ? cp.used : c.used;
     const currentTotal = cp ? cp.total : c.total;
-    if (currentUsed >= currentTotal) return;
+    if (currentUsed + qty > currentTotal) return;
 
     try {
       if (cp) {
-        await dbUpd('customer_packages', cp.id, { used: cp.used + 1 });
-        await dbUpd('customers', c.id, { used: c.used + 1 });
+        await dbUpd('customer_packages', cp.id, { used: cp.used + qty });
+        await dbUpd('customers', c.id, { used: c.used + qty });
       } else {
-        await dbUpd('customers', c.id, { used: c.used + 1 });
+        await dbUpd('customers', c.id, { used: c.used + qty });
       }
-      const newUsed = currentUsed + 1;
-      await logActivity(c.id, 'meal_used', `Meal used. Now ${newUsed}/${currentTotal}`);
+      const newUsed = currentUsed + qty;
+      await logActivity(c.id, 'meal_used', `${qty > 1 ? qty + ' meals' : 'Meal'} used. Now ${newUsed}/${currentTotal}`);
       const pkg = packages.find(p => p.id === (cp ? cp.package_id : c.package_id));
       refresh();
       setMealUsedModal({ open: true, customer: c, used: newUsed, total: currentTotal, pkgName: pkg?.name || '' });
+      setUseMealQty(p => ({ ...p, [c.id]: 1 }));
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
     }
@@ -739,30 +741,38 @@ export default function Subscribed() {
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
                       {/* Package selector / label */}
-                      {custPacks.length > 0 ? (
-                        <Select
-                          value={(selectedCpId[c.id] || custPacks[0]?.id)?.toString()}
-                          onValueChange={v => setSelectedCpId(p => ({ ...p, [c.id]: Number(v) }))}
-                        >
-                          <SelectTrigger className="h-7 text-xs border-primary/20 text-primary w-auto min-w-[100px] max-w-[140px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {custPacks.map(xcp => {
-                              const xpkg = packages.find(p => p.id === xcp.package_id);
-                              return (
-                                <SelectItem key={xcp.id} value={xcp.id.toString()}>
-                                  {xpkg?.name || 'Pack'} ({xcp.total - xcp.used} left)
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
-                      ) : pkg ? (
-                        <div className="text-[11px] font-semibold text-primary/80 bg-primary/5 px-2 py-0.5 rounded-full border border-primary/10">
-                          {pkg.name}
-                        </div>
-                      ) : null}
+                      {(() => {
+                        const activePacks = custPacks.filter(cp => cp.total - cp.used > 0);
+                        if (activePacks.length > 0) {
+                          return (
+                            <Select
+                              value={(selectedCpId[c.id] || activePacks[0]?.id)?.toString()}
+                              onValueChange={v => setSelectedCpId(p => ({ ...p, [c.id]: Number(v) }))}
+                            >
+                              <SelectTrigger className="h-7 text-xs border-primary/20 text-primary w-auto min-w-[100px] max-w-[140px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {activePacks.map(xcp => {
+                                  const xpkg = packages.find(p => p.id === xcp.package_id);
+                                  return (
+                                    <SelectItem key={xcp.id} value={xcp.id.toString()}>
+                                      {xpkg?.name || 'Pack'} ({xcp.total - xcp.used} left)
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          );
+                        } else if (pkg) {
+                          return (
+                            <div className="text-[11px] font-semibold text-primary/80 bg-primary/5 px-2 py-0.5 rounded-full border border-primary/10">
+                              {pkg.name}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       {/* Meals left badge */}
                       {c.status === 'cancelled' ? (
@@ -859,8 +869,25 @@ export default function Subscribed() {
 
                   <div className="pt-2 flex flex-col gap-2">
                     <div className="flex gap-3">
+                      {!isDone && c.status !== 'cancelled' && (
+                        <div className="flex bg-muted/20 border border-border rounded-xl overflow-hidden h-14 w-20">
+                          <input
+                            type="number"
+                            min="1"
+                            max={total - used}
+                            value={useMealQty[c.id] || 1}
+                            onChange={e => {
+                              let val = parseInt(e.target.value);
+                              if (isNaN(val) || val < 1) val = 1;
+                              if (val > (total - used)) val = total - used;
+                              setUseMealQty(p => ({ ...p, [c.id]: val }));
+                            }}
+                            className="w-full text-center bg-transparent font-bold text-lg outline-none"
+                          />
+                        </div>
+                      )}
                       <Button
-                        onClick={() => handleUseMeal(c, cp)}
+                        onClick={() => handleUseMeal(c, cp, useMealQty[c.id] || 1)}
                         disabled={isDone || c.status === 'cancelled'}
                         className="flex-1 h-14 rounded-xl shadow-md font-bold text-lg"
                       >
