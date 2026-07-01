@@ -35,34 +35,33 @@ function PaymentModeSelect({ value, onChange }: { value: string; onChange: (v: s
   );
 }
 
-// WhatsApp message builders
 const buildMealUpdateMsg = (name: string, used: number, remaining: number, total: number, pkgName?: string) =>
-  `Hello ${name},\n\nHere is your Morning Bites meal update${pkgName ? ` for *${pkgName}*` : ''}:\n✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh sprouts every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you,\nMorning Bites 🌿`;
+  `Hello ${name},\n\nHere is your meal update${pkgName ? ` for *${pkgName}*` : ''}:\n✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh meals every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you!`;
 
 const buildRenewPackMsg = (name: string, remaining: number, total: number, price: number, pkgName?: string) =>
-  `Hello ${name},\n\nYou currently have ${remaining} meal(s) remaining${pkgName ? ` in your *${pkgName}*` : ''}.\n\nRenew your pack today!\n🎉 ${total} fresh sprout meals for just ₹${price}!\n\n📍 Akota Garden, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you,\nMorning Bites 🌿`;
+  `Hello ${name},\n\nYou currently have ${remaining} meal(s) remaining${pkgName ? ` in your *${pkgName}*` : ''}.\n\nRenew your pack today!\n🎉 ${total} fresh meals for just ₹${price}!\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you!`;
 
 const buildPackDoneMsg = (name: string, total: number, price: number, pkgName?: string) =>
-  `Hello ${name},\n\nAll ${total} meals${pkgName ? ` in your *${pkgName}*` : ''} have been used.\n\nRenew today!\n🎉 ${total} fresh sprout meals for just ₹${price}!\n\n📍 Akota Garden, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you,\nMorning Bites 🌿`;
+  `Hello ${name},\n\nAll ${total} meals${pkgName ? ` in your *${pkgName}*` : ''} have been used.\n\nRenew today!\n🎉 ${total} fresh meals for just ₹${price}!\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you!`;
 
 const buildActiveSubMsg = (name: string, pkgName: string, total: number, price: number, startDate: string) =>
-  `Hello ${name},\n\nWelcome to Morning Bites! 🌿\n\nYour ${pkgName} subscription is now active!\n\n📦 Pack: ${total} meals\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+  `Hello ${name},\n\nYour ${pkgName} subscription is now active!\n\n📦 Pack: ${total} meals\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
 
 const buildActiveSubMsgMulti = (name: string, pkgs: Package[], startDate: string) => {
   const pkgsList = pkgs.map((p, i) => `${i + 1}. ${p.name} — ${p.meals_count ?? 10} meals — ₹${p.price}`).join('\n');
   const totalPrice = pkgs.reduce((s, p) => s + p.price, 0);
   const totalMeals = pkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0);
-  return `Hello ${name},\n\nWelcome to Morning Bites! 🌿\n\nYour subscriptions are now active!\n\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+  return `Hello ${name},\n\nYour subscriptions are now active!\n\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
 };
 
 const buildRenewalMsg = (name: string, pkgName: string, total: number, price: number, startDate: string) =>
-  `Hello ${name},\n\nYour Morning Bites subscription has been renewed! 🌿\n\n🔄 Renewal\n📦 Package: ${pkgName}\n🍽️ Meals: ${total}\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+  `Hello ${name},\n\nYour subscription has been renewed!\n\n🔄 Renewal\n📦 Package: ${pkgName}\n🍽️ Meals: ${total}\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
 
 const buildRenewalMsgMulti = (name: string, pkgs: Package[], startDate: string) => {
   const pkgsList = pkgs.map((p, i) => `${i + 1}. ${p.name} — ${p.meals_count ?? 10} meals — ₹${p.price}`).join('\n');
   const totalPrice = pkgs.reduce((s, p) => s + p.price, 0);
   const totalMeals = pkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0);
-  return `Hello ${name},\n\nYour Morning Bites subscriptions have been renewed! 🌿\n\n🔄 Renewal\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+  return `Hello ${name},\n\nYour subscriptions have been renewed!\n\n🔄 Renewal\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
 };
 
 export default function Subscribed() {
@@ -398,7 +397,7 @@ export default function Subscribed() {
       const used = cp ? cp.used : c.used;
       const total = cp ? cp.total : c.total;
       const refundAmount = (total - used) * pricePerMeal;
-      const msg = `Hello ${c.name},\n\nYour Morning Bites subscription has been cancelled.\n\n📊 Meals Used: ${used}/${total}\n💰 Refund Amount: ₹${refundAmount} (${total - used} meals × ₹${pricePerMeal})\n\nWe hope to see you again! 🌿\n\nMorning Bites`;
+      const msg = `Hello ${c.name},\n\nYour subscription has been cancelled.\n\n📊 Meals Used: ${used}/${total}\n💰 Refund Amount: ₹${refundAmount} (${total - used} meals × ₹${pricePerMeal})\n\nWe hope to see you again!`;
       window.open(`https://wa.me/91${c.phone}?text=${encodeURIComponent(msg)}`, '_blank');
     }
 
@@ -500,14 +499,14 @@ export default function Subscribed() {
       const d = new Date(datesToSkip[0] + 'T00:00:00');
       const dayName = d.toLocaleDateString('en-IN', { weekday: 'long' });
       const dateStr = d.toLocaleDateString('en-IN');
-      msg = `Hello ${c.name},\n\nConfirmed — your Morning Bites pack is skipped for:\n\n📅 ${dayName}, ${dateStr}${pkgLine}\n\nYour remaining meals stay the same. See you on your next day!\n\nMorning Bites 🌿`;
+      msg = `Hello ${c.name},\n\nConfirmed — your pack is skipped for:\n\n📅 ${dayName}, ${dateStr}${pkgLine}\n\nYour remaining meals stay the same. See you on your next day!`;
     } else if (skipMode === 'range') {
       const start = new Date(datesToSkip[0] + 'T00:00:00').toLocaleDateString('en-IN');
       const end = new Date(datesToSkip[datesToSkip.length - 1] + 'T00:00:00').toLocaleDateString('en-IN');
-      msg = `Hello ${c.name},\n\nConfirmed — your Morning Bites pack is skipped from:\n\n📅 ${start} to ${end} (${datesToSkip.length} days)${pkgLine}\n\nYour remaining meals stay the same.\n\nMorning Bites 🌿`;
+      msg = `Hello ${c.name},\n\nConfirmed — your pack is skipped from:\n\n📅 ${start} to ${end} (${datesToSkip.length} days)${pkgLine}\n\nYour remaining meals stay the same.`;
     } else {
       const dateLines = datesToSkip.map(d => `📅 ${new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })}`).join('\n');
-      msg = `Hello ${c.name},\n\nConfirmed — your Morning Bites pack is skipped on:\n\n${dateLines}${pkgLine}\n\nYour remaining meals stay the same.\n\nMorning Bites 🌿`;
+      msg = `Hello ${c.name},\n\nConfirmed — your pack is skipped on:\n\n${dateLines}${pkgLine}\n\nYour remaining meals stay the same.`;
     }
     window.open(`https://wa.me/91${c.phone}?text=${encodeURIComponent(msg)}`, '_blank');
 
@@ -1369,10 +1368,10 @@ export default function Subscribed() {
                 ))}
               </RadioGroup>
             </div>
-            {editModal.customer && getCustPacks(editModal.customer.id).length > 0 && (
+            {editModal.customer && getCustPacks(editModal.customer.id).filter(cp => cp.total - cp.used > 0).length > 0 && (
               <div className="space-y-3">
                 <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Per Package Settings</Label>
-                {getCustPacks(editModal.customer.id).map(cp => {
+                {getCustPacks(editModal.customer.id).filter(cp => cp.total - cp.used > 0).map(cp => {
                   const pkg = packages.find(p => p.id === cp.package_id);
                   const saladDays = editSaladDaysByCp[cp.id] || [];
                   return (

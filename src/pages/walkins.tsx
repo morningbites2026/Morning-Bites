@@ -69,7 +69,7 @@ export default function Walkins() {
         logActivity(cust?.id || null, 'edit', `Walk-in info updated: ${name} / ${phone}`);
         toast({ title: "Walk-in updated" });
       } else {
-        const msg = `Hello ${name}! 🌱\n\nThank you for visiting Morning Bites today! We're happy to serve you fresh, healthy sprouts food every morning.\n\nWould you like to know about our subscription packs? Ask us in store or reply to this message!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nMorning Bites 🌿`;
+        const msg = `Hello ${name}! 🌱\n\nThank you for visiting us today! We're happy to serve you fresh, healthy food every morning.\n\nWould you like to know about our subscription packs? Ask us in store or reply to this message!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822`;
         window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`, '_blank');
 
         const today = getISTISODate();
@@ -113,11 +113,11 @@ export default function Walkins() {
     const primaryMeals = primaryPkg?.meals_count ?? 10;
 
     const msg = selectedPkgs.length === 1
-      ? `Hello ${subWalkin.name},\n\nWelcome to Morning Bites! 🌿\n\nYour ${primaryPkg?.name || 'Sprouts Salad'} subscription is now active!\n\n📦 Pack: ${primaryMeals} meals\n💰 Amount: ₹${primaryPkg?.price || 0}\n📅 Start date: ${dateDisplay}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`
+      ? `Hello ${subWalkin.name},\n\nYour ${primaryPkg?.name || 'Package'} subscription is now active!\n\n📦 Pack: ${primaryMeals} meals\n💰 Amount: ₹${primaryPkg?.price || 0}\n📅 Start date: ${dateDisplay}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`
       : (() => {
           const pkgsList = selectedPkgs.map((p, i) => `${i + 1}. ${p.name} — ${p.meals_count ?? 10} meals — ₹${p.price}`).join('\n');
           const totalMeals = selectedPkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0);
-          return `Hello ${subWalkin.name},\n\nWelcome to Morning Bites! 🌿\n\nYour subscriptions are now active!\n\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${subTotal}\n📅 Start date: ${dateDisplay}\n\nEnjoy fresh sprouts daily!\n✅ Healthy • Hygienic • Tasty\n\n📍 Akota Garden, Near Radha Krishan Circle, Akota, Vadodara\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!\nMorning Bites 🌿`;
+          return `Hello ${subWalkin.name},\n\nYour subscriptions are now active!\n\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${subTotal}\n📅 Start date: ${dateDisplay}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
         })();
     window.open(`https://wa.me/91${subWalkin.phone}?text=${encodeURIComponent(msg)}`, '_blank');
 
@@ -204,8 +204,8 @@ export default function Walkins() {
     }
 
     const msg = promo
-      ? `Hello ${promoteWalkin.name}! 🌱\n\n${promo.title}\n\n${promo.description}${promo.image_url ? `\n\n📸 ${promo.image_url}` : ''}\n\nMorning Bites 🌿`
-      : `Hello ${promoteWalkin.name}! 🌱\n\nWe're Morning Bites – your daily sprouts & healthy snack stall.\n\n✅ Get 10 fresh meals\n🍃 Healthy food every morning\n\nInterested? Visit us or reply to subscribe!\n\nMorning Bites 🌿`;
+      ? `Hello ${promoteWalkin.name}! 🌱\n\n${promo.title}\n\n${promo.description}${promo.image_url ? `\n\n📸 ${promo.image_url}` : ''}`
+      : `Hello ${promoteWalkin.name}! 🌱\n\nWe're here for your daily healthy snack.\n\n✅ Get 10 fresh meals\n🍃 Healthy food every morning\n\nInterested? Visit us or reply to subscribe!`;
 
     // Open WhatsApp synchronously — no await before this
     window.open(`https://wa.me/91${promoteWalkin.phone}?text=${encodeURIComponent(msg)}`, '_blank');
@@ -430,7 +430,7 @@ export default function Walkins() {
 
       {/* Subscribe / Renew Modal */}
       <Dialog open={isSubModalOpen} onOpenChange={v => { setIsSubModalOpen(v); if (!v) setSubQrOpen(false); }}>
-        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6">
+        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">
               {getCustomerForPhone(subWalkin?.phone || '')?.status === 'active'

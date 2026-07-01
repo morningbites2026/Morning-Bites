@@ -15,7 +15,8 @@ export default function BillReports() {
   const [, navigate] = useLocation();
 
   const [period, setPeriod] = useState("today");
-  const [dateFilter, setDateFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   // Normalize bill_date to ISO (YYYY-MM-DD) — handles both "29/4/2026" and "29/04/2026"
   const billDateToISO = (dateStr: string): string => {
@@ -38,7 +39,13 @@ export default function BillReports() {
   };
 
   const filteredBills = bills.filter(b => {
-    if (dateFilter) return billDateToISO(b.bill_date) === dateFilter;
+    if (period === "custom") {
+      const bDate = billDateToISO(b.bill_date);
+      if (fromDate && toDate) return bDate >= fromDate && bDate <= toDate;
+      if (fromDate) return bDate >= fromDate;
+      if (toDate) return bDate <= toDate;
+      return true;
+    }
     if (period === "today") return billDateToISO(b.bill_date) === getISTISODate();
     if (period === "week") return new Date(b.created_at) >= getWeekStart();
     if (period === "month") return new Date(b.created_at) >= getMonthStart();
@@ -106,7 +113,7 @@ export default function BillReports() {
       </h2>
 
       <div className="space-y-2">
-        <Tabs value={period} onValueChange={v => { setPeriod(v); setDateFilter(""); }} className="w-full">
+        <Tabs value={period} onValueChange={v => { setPeriod(v); setFromDate(""); setToDate(""); }} className="w-full">
           <TabsList className="w-full bg-muted/50 p-1 grid grid-cols-4 rounded-xl">
             <TabsTrigger value="today" className="rounded-lg text-xs">Today</TabsTrigger>
             <TabsTrigger value="week" className="rounded-lg text-xs">This Week</TabsTrigger>
@@ -118,12 +125,19 @@ export default function BillReports() {
           <CalendarDays className="w-4 h-4 text-muted-foreground" />
           <Input
             type="date"
-            value={dateFilter}
-            onChange={e => { setDateFilter(e.target.value); setPeriod("all"); }}
+            value={fromDate}
+            onChange={e => { setFromDate(e.target.value); setPeriod("custom"); }}
             className="h-9 text-sm flex-1"
           />
-          {dateFilter && (
-            <Button variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => setDateFilter("")}>
+          <span className="text-muted-foreground">to</span>
+          <Input
+            type="date"
+            value={toDate}
+            onChange={e => { setToDate(e.target.value); setPeriod("custom"); }}
+            className="h-9 text-sm flex-1"
+          />
+          {(fromDate || toDate) && (
+            <Button variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setFromDate(""); setToDate(""); setPeriod("all"); }}>
               Clear
             </Button>
           )}
