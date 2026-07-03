@@ -239,7 +239,7 @@ export default function SubscriberDetail() {
           Object.entries(packageGroups).map(([pkgIdStr, pkgCps]) => {
             const pkgId = Number(pkgIdStr);
             const pkg = packages.find(p => p.id === pkgId);
-            const isExpanded = expandedPkgIds[pkgId] !== false; // default expanded
+            const isExpanded = expandedPkgIds[pkgId] === true; // default collapsed
 
             // Sort chronologically ascending to calculate cycle indices
             const chronologicalCps = [...pkgCps].reverse();
@@ -272,7 +272,7 @@ export default function SubscriberDetail() {
                   <div className="p-5 space-y-5 bg-card/50">
                     {pkgCps.map((cp, idx) => {
                       const cycleIndex = chronologicalCps.findIndex(x => x.id === cp.id) + 1;
-                      const isCycleExpanded = expandedCycleIds[cp.id] !== undefined ? expandedCycleIds[cp.id] : (cp.status === 'active');
+                      const isCycleExpanded = expandedCycleIds[cp.id] === true; // default collapsed
                       const progressPercent = cp.total > 0 ? (cp.used / cp.total) * 100 : 0;
 
                       // Filter activity logs for this cycle
