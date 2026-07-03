@@ -745,7 +745,7 @@ export default function Subscribed() {
                     <div className="flex flex-col items-end gap-1.5">
                       {/* Package selector / label */}
                       {(() => {
-                        const activePacks = custPacks;
+                        const activePacks = custPacks.filter(cp => cp.total - cp.used > 0);
                         if (activePacks.length > 0) {
                           return (
                             <Select
@@ -758,10 +758,9 @@ export default function Subscribed() {
                               <SelectContent>
                                 {activePacks.map(xcp => {
                                   const xpkg = packages.find(p => p.id === xcp.package_id);
-                                  const left = xcp.total - xcp.used;
                                   return (
                                     <SelectItem key={xcp.id} value={xcp.id.toString()}>
-                                      {xpkg?.name || 'Pack'} ({left > 0 ? `${left} left` : 'Done'})
+                                      {xpkg?.name || 'Pack'} ({xcp.total - xcp.used} left)
                                     </SelectItem>
                                   );
                                 })}
