@@ -37,7 +37,7 @@ function PaymentModeSelect({ value, onChange }: { value: string; onChange: (v: s
 }
 
 const buildMealUpdateMsg = (name: string, used: number, remaining: number, total: number, pkgName?: string, todayUsed?: number) =>
-  `Hello ${name},\n\nHere is your meal update${pkgName ? ` for *${pkgName}*` : ''}:\n${todayUsed && todayUsed > 0 ? `Today's used pack = ${todayUsed}\n` : ''}✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh meals every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you!`;
+  `Hello ${name},\n\nHere is your meal update${pkgName ? ` for *${pkgName}*` : ''}:\n✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh meals every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you!`;
 
 const buildRenewPackMsg = (name: string, remaining: number, total: number, price: number, pkgName?: string) =>
   `Hello ${name},\n\nYou currently have ${remaining} meal(s) remaining${pkgName ? ` in your *${pkgName}*` : ''}.\n\nRenew your pack today!\n🎉 ${total} fresh meals for just ₹${price}!\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you!`;

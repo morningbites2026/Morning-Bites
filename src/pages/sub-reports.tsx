@@ -92,19 +92,30 @@ export default function SubReports() {
   // Customers scheduled for tomorrow: active, not done, day matches, not skipped
   const tomorrowCustomers = useMemo(() => {
     return activeSubs.filter(c => {
-      // Get meals data — prefer customer_packages aggregate
-      const custPacks = customerPackages.filter(cp => cp.customer_id === c.id && cp.status === 'active');
-      const hasMealsLeft = custPacks.length > 0
-        ? custPacks.some(cp => cp.used < cp.total)
-        : c.used < c.total;
-      if (!hasMealsLeft) return false;
+      // Get all active packages for this customer
+      const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
+      
+      let isScheduledForAnyPack = false;
+      
+      if (custPacks.length > 0) {
+        // If they have active packages in customer_packages, check if any of them are scheduled for tomorrow
+        isScheduledForAnyPack = custPacks.some(cp => {
+          if (cp.used >= cp.total) return false;
+          
+          const cpPrefDays = cp.preferred_days;
+          const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
+          return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+        });
+      } else if (c.package_id && c.used < c.total) {
+        // Legacy fallback
+        const effectivePrefDays = c.preferred_days || [];
+        isScheduledForAnyPack = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+      }
 
-      // Check if tomorrow is a scheduled day
-      const scheduled = c.preferred_days.length === 0 || c.preferred_days.includes(tomorrowDayIdx);
-      if (!scheduled) return false;
+      if (!isScheduledForAnyPack) return false;
 
       // Check no skip for tomorrow (package-agnostic — any skip counts)
-      const isSkipped = mealSkips.some(s => s.customer_id === c.id && s.skip_date === tomorrowISO && !s.unskipped);
+      const isSkipped = mealSkips.some(s => Number(s.customer_id) === c.id && s.skip_date === tomorrowISO && !s.unskipped);
       return !isSkipped;
     });
   }, [activeSubs, customerPackages, mealSkips, tomorrowISO, tomorrowDayIdx]);
@@ -116,19 +127,31 @@ export default function SubReports() {
     return activePackagesList.map(pkg => {
       const custForPkg = tomorrowCustomers.filter(c => {
         // Check if customer has active customer_package for this pkg
-        const hasCp = customerPackages.some(cp =>
-          cp.customer_id === c.id &&
+        const cp = customerPackages.find(cp =>
+          Number(cp.customer_id) === c.id &&
           cp.package_id === pkg.id &&
           cp.status === 'active' &&
           cp.used < cp.total
         );
-        // Also check legacy customers.package_id
-        const hasLegacy = !hasCp && c.package_id === pkg.id;
-        return hasCp || hasLegacy;
+        
+        if (cp) {
+          // Check if this specific package is scheduled for tomorrow
+          const cpPrefDays = cp.preferred_days;
+          const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
+          return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+        }
+        
+        // Legacy fallback
+        if (c.package_id === pkg.id && c.used < c.total) {
+          const effectivePrefDays = c.preferred_days || [];
+          return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+        }
+        
+        return false;
       });
       return { pkg, customers: custForPkg };
     }).filter(g => g.customers.length > 0);
-  }, [activePackagesList, tomorrowCustomers, customerPackages]);
+  }, [activePackagesList, tomorrowCustomers, customerPackages, tomorrowDayIdx]);
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300 pb-8">
@@ -208,7 +231,7 @@ export default function SubReports() {
                         </Badge>
                       </div>
                       {g.customers.map((c, idx) => {
-                        const cp = customerPackages.find(cp => cp.customer_id === c.id && cp.package_id === g.pkg.id && cp.status === 'active');
+                        const cp = customerPackages.find(cp => Number(cp.customer_id) === c.id && cp.package_id === g.pkg.id && cp.status === 'active');
                         const used = cp ? cp.used : c.used;
                         const total = cp ? cp.total : c.total;
                         return (
