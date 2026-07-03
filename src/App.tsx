@@ -13,6 +13,7 @@ import BillReports from "@/pages/bill-reports";
 import SubDashboard from "@/pages/sub-dashboard";
 import Walkins from "@/pages/walkins";
 import Subscribed from "@/pages/subscribed";
+import SubscriberDetail from "@/pages/subscriber-detail";
 import SubReports from "@/pages/sub-reports";
 import Packages from "@/pages/packages";
 import Menu from "@/pages/menu";
@@ -31,6 +32,7 @@ function Router() {
         <Route path="/sub-dashboard" component={SubDashboard} />
         <Route path="/walkins" component={Walkins} />
         <Route path="/subscribed" component={Subscribed} />
+        <Route path="/subscriber/:id" component={SubscriberDetail} />
         <Route path="/sub-reports" component={SubReports} />
         <Route path="/packages" component={Packages} />
         <Route path="/menu" component={Menu} />

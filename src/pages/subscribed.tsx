@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useStore } from "@/lib/store";
 import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
@@ -35,8 +36,8 @@ function PaymentModeSelect({ value, onChange }: { value: string; onChange: (v: s
   );
 }
 
-const buildMealUpdateMsg = (name: string, used: number, remaining: number, total: number, pkgName?: string) =>
-  `Hello ${name},\n\nHere is your meal update${pkgName ? ` for *${pkgName}*` : ''}:\n✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh meals every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you!`;
+const buildMealUpdateMsg = (name: string, used: number, remaining: number, total: number, pkgName?: string, todayUsed?: number) =>
+  `Hello ${name},\n\nHere is your meal update${pkgName ? ` for *${pkgName}*` : ''}:\n${todayUsed && todayUsed > 0 ? `Today's used pack = ${todayUsed}\n` : ''}✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh meals every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you!`;
 
 const buildRenewPackMsg = (name: string, remaining: number, total: number, price: number, pkgName?: string) =>
   `Hello ${name},\n\nYou currently have ${remaining} meal(s) remaining${pkgName ? ` in your *${pkgName}*` : ''}.\n\nRenew your pack today!\n🎉 ${total} fresh meals for just ₹${price}!\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you!`;
@@ -147,14 +148,14 @@ export default function Subscribed() {
   const [instrModal, setInstrModal] = useState<{ open: boolean; customer: any }>({ open: false, customer: null });
   const [instrEdits, setInstrEdits] = useState<Record<number, string>>({});
 
-  const [mealUsedModal, setMealUsedModal] = useState<{ open: boolean; customer: any; used: number; total: number; pkgName: string }>({ open: false, customer: null, used: 0, total: 0, pkgName: '' });
-  const [useMealQty, setUseMealQty] = useState<{ [key: number]: number }>({});
+  const [mealUsedModal, setMealUsedModal] = useState<{ open: boolean; customer: any; used: number; total: number; pkgName: string; qty?: number }>({ open: false, customer: null, used: 0, total: 0, pkgName: '', qty: 1 });
+  const [useMealQty, setUseMealQty] = useState<{ [key: number]: number | string }>({});
 
   // ─── helpers ──────────────────────────────────────────────────────────────
   const activeSubs = customers.filter(c => !c.is_deleted);
 
   const getCustPacks = (customerId: number) =>
-    customerPackages.filter(cp => cp.customer_id === customerId && cp.status !== 'cancelled')
+    customerPackages.filter(cp => Number(cp.customer_id) === customerId && cp.status !== 'cancelled')
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   const getSelectedCp = (c: any): CustomerPackage | null => {
@@ -336,17 +337,17 @@ export default function Subscribed() {
       await logActivity(c.id, 'meal_used', `${qty > 1 ? qty + ' meals' : 'Meal'} used. Now ${newUsed}/${currentTotal}`);
       const pkg = packages.find(p => p.id === (cp ? cp.package_id : c.package_id));
       refresh();
-      setMealUsedModal({ open: true, customer: c, used: newUsed, total: currentTotal, pkgName: pkg?.name || '' });
+      setMealUsedModal({ open: true, customer: c, used: newUsed, total: currentTotal, pkgName: pkg?.name || '', qty });
       setUseMealQty(p => ({ ...p, [c.id]: 1 }));
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
     }
   };
 
-  const handleSendMealUpdate = (customer: any, used: number, remaining: number, total: number, pkgName: string) => {
-    const msg = buildMealUpdateMsg(customer.name, used, remaining, total, pkgName || undefined);
+  const handleSendMealUpdate = (customer: any, used: number, remaining: number, total: number, pkgName: string, qty?: number) => {
+    const msg = buildMealUpdateMsg(customer.name, used, remaining, total, pkgName || undefined, qty);
     window.open(`https://wa.me/91${customer.phone}?text=${encodeURIComponent(msg)}`, '_blank');
-    setMealUsedModal({ open: false, customer: null, used: 0, total: 0, pkgName: '' });
+    setMealUsedModal({ open: false, customer: null, used: 0, total: 0, pkgName: '', qty: 1 });
   };
 
   // ─── Undo meal ────────────────────────────────────────────────────────────
@@ -736,13 +737,15 @@ export default function Subscribed() {
                 <CardContent className="p-5 flex flex-col gap-5">
                   <div className="flex justify-between items-start">
                     <div>
-                      <div className="font-bold font-serif text-xl leading-tight">{c.name}</div>
+                      <Link href={`/subscriber/${c.id}`} className="font-bold font-serif text-xl leading-tight hover:underline hover:text-primary cursor-pointer transition-colors block">
+                        {c.name}
+                      </Link>
                       <div className="text-sm font-medium text-muted-foreground mt-0.5">{c.phone}</div>
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
                       {/* Package selector / label */}
                       {(() => {
-                        const activePacks = custPacks.filter(cp => cp.total - cp.used > 0);
+                        const activePacks = custPacks;
                         if (activePacks.length > 0) {
                           return (
                             <Select
@@ -755,9 +758,10 @@ export default function Subscribed() {
                               <SelectContent>
                                 {activePacks.map(xcp => {
                                   const xpkg = packages.find(p => p.id === xcp.package_id);
+                                  const left = xcp.total - xcp.used;
                                   return (
                                     <SelectItem key={xcp.id} value={xcp.id.toString()}>
-                                      {xpkg?.name || 'Pack'} ({xcp.total - xcp.used} left)
+                                      {xpkg?.name || 'Pack'} ({left > 0 ? `${left} left` : 'Done'})
                                     </SelectItem>
                                   );
                                 })}
@@ -827,7 +831,7 @@ export default function Subscribed() {
                         const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
                         const isScheduled = effectivePrefDays.length === 0 || effectivePrefDays.includes(i);
                         const skip = mealSkips.find(s =>
-                          s.customer_id === c.id &&
+                          Number(s.customer_id) === c.id &&
                           s.skip_date === d.iso &&
                           !s.unskipped &&
                           (s.customer_package_id == null || s.customer_package_id === cp?.id)
@@ -860,7 +864,7 @@ export default function Subscribed() {
                         );
                       })}
                     </div>
-                    {mealSkips.some(s => s.customer_id === c.id && !s.unskipped) && (
+                    {mealSkips.some(s => Number(s.customer_id) === c.id && !s.unskipped) && (
                       <div className="px-3 pb-2 text-[10px] text-orange-600 font-medium">
                         Tap orange day to remove skip
                       </div>
@@ -875,19 +879,30 @@ export default function Subscribed() {
                             type="number"
                             min="1"
                             max={total - used}
-                            value={useMealQty[c.id] || 1}
+                            value={useMealQty[c.id] !== undefined ? useMealQty[c.id] : 1}
                             onChange={e => {
-                              let val = parseInt(e.target.value);
-                              if (isNaN(val) || val < 1) val = 1;
-                              if (val > (total - used)) val = total - used;
-                              setUseMealQty(p => ({ ...p, [c.id]: val }));
+                              const rawVal = e.target.value;
+                              if (rawVal === '') {
+                                setUseMealQty(p => ({ ...p, [c.id]: '' }));
+                                return;
+                              }
+                              let val = parseInt(rawVal);
+                              if (!isNaN(val)) {
+                                if (val > (total - used)) val = total - used;
+                                setUseMealQty(p => ({ ...p, [c.id]: val }));
+                              }
                             }}
                             className="w-full text-center bg-transparent font-bold text-lg outline-none"
                           />
                         </div>
                       )}
                       <Button
-                        onClick={() => handleUseMeal(c, cp, useMealQty[c.id] || 1)}
+                        onClick={() => {
+                          const rawVal = useMealQty[c.id];
+                          const qty = typeof rawVal === 'number' ? rawVal : parseInt(rawVal as string);
+                          const finalQty = isNaN(qty) || qty < 1 ? 1 : qty;
+                          handleUseMeal(c, cp, finalQty);
+                        }}
                         disabled={isDone || c.status === 'cancelled'}
                         className="flex-1 h-14 rounded-xl shadow-md font-bold text-lg"
                       >
@@ -923,17 +938,15 @@ export default function Subscribed() {
                         <AlertCircle className="w-4 h-4" />
                       </Button>
 
-                      {!isDone && (
-                        <Button
-                          variant="outline"
-                          onClick={() => setNotifyModal({ open: true, customer: c, type: isLow ? 'low' : 'meal', cp })}
-                          disabled={c.status === 'cancelled'}
-                          className="w-10 h-10 rounded-lg p-0 border-primary/20 text-primary hover:bg-primary/5"
-                          title="Notify"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="outline"
+                        onClick={() => setNotifyModal({ open: true, customer: c, type: isDone ? 'done' : isLow ? 'low' : 'meal', cp })}
+                        disabled={c.status === 'cancelled'}
+                        className="w-10 h-10 rounded-lg p-0 border-primary/20 text-primary hover:bg-primary/5"
+                        title="Notify"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                      </Button>
 
                       <Button
                         variant="outline"
@@ -1158,7 +1171,7 @@ export default function Subscribed() {
       </Dialog>
 
       {/* ─── Meal Used WhatsApp Prompt ───────────────────────────────────────── */}
-      <Dialog open={mealUsedModal.open} onOpenChange={o => !o && setMealUsedModal({ open: false, customer: null, used: 0, total: 0, pkgName: '' })}>
+      <Dialog open={mealUsedModal.open} onOpenChange={o => !o && setMealUsedModal({ open: false, customer: null, used: 0, total: 0, pkgName: '', qty: 1 })}>
         <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">Meal Marked Used ✓</DialogTitle>
@@ -1170,12 +1183,12 @@ export default function Subscribed() {
           </div>
           <DialogFooter className="flex-col gap-2">
             <Button
-              onClick={() => handleSendMealUpdate(mealUsedModal.customer, mealUsedModal.used, mealUsedModal.total - mealUsedModal.used, mealUsedModal.total, mealUsedModal.pkgName)}
+              onClick={() => handleSendMealUpdate(mealUsedModal.customer, mealUsedModal.used, mealUsedModal.total - mealUsedModal.used, mealUsedModal.total, mealUsedModal.pkgName, mealUsedModal.qty)}
               className="w-full h-12 rounded-xl bg-[#25D366] hover:bg-[#1DA851] text-white font-bold"
             >
               <MessageCircle className="w-5 h-5 mr-2" /> Send WhatsApp Update
             </Button>
-            <Button variant="outline" onClick={() => setMealUsedModal({ open: false, customer: null, used: 0, total: 0, pkgName: '' })} className="w-full h-12 rounded-xl">
+            <Button variant="outline" onClick={() => setMealUsedModal({ open: false, customer: null, used: 0, total: 0, pkgName: '', qty: 1 })} className="w-full h-12 rounded-xl">
               Skip
             </Button>
           </DialogFooter>

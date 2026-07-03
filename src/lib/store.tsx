@@ -79,8 +79,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const cp = await dbGet<CustomerPackage>('customer_packages');
         setCustomerPackages(cp);
-      } catch {
+      } catch (err: any) {
+        console.error("Failed to load customer_packages:", err);
         setCustomerPackages([]);
+        toast({ variant: "destructive", title: "Error loading customer packages", description: err.message });
       }
     } catch (err: any) {
       console.error(err);
