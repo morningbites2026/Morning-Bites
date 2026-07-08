@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useStore } from "@/lib/store";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutDashboard, Receipt, BarChart2, CalendarDays, Users, Leaf, TrendingUp, Package, UtensilsCrossed, Megaphone, ClipboardList, Menu, X } from "lucide-react";
+import { Search, LayoutDashboard, Receipt, BarChart2, CalendarDays, Users, Leaf, TrendingUp, Package, UtensilsCrossed, Megaphone, ClipboardList, Menu, X, Calculator } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,7 @@ const tabs = [
   { path: "/packages", label: "Packages", icon: Package },
   { path: "/menu", label: "Menu", icon: UtensilsCrossed },
   { path: "/promotions", label: "Promotions", icon: Megaphone },
+  { path: "/recipe-costing", label: "Recipe Costing", icon: Calculator },
 ];
 
 const primaryTabs = tabs.filter(t => ['/billing', '/bill-reports', '/subscribed'].includes(t.path));

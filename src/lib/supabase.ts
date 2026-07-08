@@ -191,6 +191,42 @@ export interface Promotion {
   created_at: string;
 }
 
+export interface Material {
+  id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface RecipeCost {
+  id: number;
+  menu_item_id: number;
+  option_name: string;
+  total_cost: number;
+  created_at: string;
+}
+
+export interface RecipeIngredient {
+  id: number;
+  recipe_cost_id: number;
+  material_id: number | null;
+  material_name: string;
+  qty: number;
+  unit: string;
+  price: number;
+  created_at: string;
+}
+
+export interface MaterialPurchase {
+  id: number;
+  material_id: number | null;
+  material_name: string;
+  price: number;
+  qty: number;
+  unit: string;
+  purchase_date: string;
+  created_at: string;
+}
+
 export async function dbGet<T>(table: string, query?: string): Promise<T[]> {
   ensureSupabaseEnv();
   const url = `${supabaseUrl}/rest/v1/${table}?${query || 'select=*'}&order=created_at.desc`;

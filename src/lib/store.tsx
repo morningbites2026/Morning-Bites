@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
-import { dbGet, Customer, Walkin, MenuItem, Bill, MealSkip, Package, Promotion, Preorder, CustomerPackage } from "./supabase";
+import { dbGet, Customer, Walkin, MenuItem, Bill, MealSkip, Package, Promotion, Preorder, CustomerPackage, Material, RecipeCost, RecipeIngredient, MaterialPurchase, dbIns, dbDel, dbUpd } from "./supabase";
 import { useToast } from "@/hooks/use-toast";
 
 type StoreState = {
@@ -12,6 +12,10 @@ type StoreState = {
   packages: Package[];
   promotions: Promotion[];
   customerPackages: CustomerPackage[];
+  materials: Material[];
+  recipeCosts: RecipeCost[];
+  recipeIngredients: RecipeIngredient[];
+  materialPurchases: MaterialPurchase[];
   isLoading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
@@ -19,6 +23,9 @@ type StoreState = {
   setSearchQuery: (q: string) => void;
   editingBill: Bill | null;
   setEditingBill: (b: Bill | null) => void;
+  addMaterial: (name: string) => Promise<Material>;
+  saveRecipe: (menuItemId: number, optionName: string, totalCost: number, ingredients: Omit<RecipeIngredient, 'id' | 'recipe_cost_id' | 'created_at'>[]) => Promise<void>;
+  addPurchase: (materialName: string, price: number, qty: number, unit: string, date: string) => Promise<void>;
 };
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -33,6 +40,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [packages, setPackages] = useState<Package[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [customerPackages, setCustomerPackages] = useState<CustomerPackage[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [recipeCosts, setRecipeCosts] = useState<RecipeCost[]>([]);
+  const [recipeIngredients, setRecipeIngredients] = useState<RecipeIngredient[]>([]);
+  const [materialPurchases, setMaterialPurchases] = useState<MaterialPurchase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -82,7 +93,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch (err: any) {
         console.error("Failed to load customer_packages:", err);
         setCustomerPackages([]);
-        toast({ variant: "destructive", title: "Error loading customer packages", description: err.message });
+      }
+
+      try {
+        const mats = await dbGet<Material>('materials');
+        setMaterials(mats);
+      } catch (err: any) {
+        console.error("Failed to load materials:", err);
+        setMaterials([]);
+      }
+
+      try {
+        const rc = await dbGet<RecipeCost>('recipe_costs');
+        setRecipeCosts(rc);
+      } catch (err: any) {
+        console.error("Failed to load recipe_costs:", err);
+        setRecipeCosts([]);
+      }
+
+      try {
+        const ri = await dbGet<RecipeIngredient>('recipe_ingredients');
+        setRecipeIngredients(ri);
+      } catch (err: any) {
+        console.error("Failed to load recipe_ingredients:", err);
+        setRecipeIngredients([]);
+      }
+
+      try {
+        const mp = await dbGet<MaterialPurchase>('material_purchases');
+        setMaterialPurchases(mp);
+      } catch (err: any) {
+        console.error("Failed to load material_purchases:", err);
+        setMaterialPurchases([]);
       }
     } catch (err: any) {
       console.error(err);
@@ -93,6 +135,106 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
+  const addMaterial = useCallback(async (name: string) => {
+    try {
+      const existing = materials.find(m => m.name.toLowerCase() === name.toLowerCase());
+      if (existing) return existing;
+      const res = await dbIns<Material>('materials', { name });
+      if (res && res.length > 0) {
+        setMaterials(prev => [...prev, res[0]]);
+        return res[0];
+      }
+      throw new Error("Failed to create material");
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error adding material", description: err.message });
+      throw err;
+    }
+  }, [materials, toast]);
+
+  const saveRecipe = useCallback(async (
+    menuItemId: number,
+    optionName: string,
+    totalCost: number,
+    ingredients: Omit<RecipeIngredient, 'id' | 'recipe_cost_id' | 'created_at'>[]
+  ) => {
+    try {
+      const existing = recipeCosts.find(rc => rc.menu_item_id === menuItemId && rc.option_name === optionName);
+      let recipeCostId: number;
+
+      if (existing) {
+        await dbUpd('recipe_costs', existing.id, { total_cost: totalCost });
+        recipeCostId = existing.id;
+
+        const oldIngs = recipeIngredients.filter(ri => ri.recipe_cost_id === existing.id);
+        await Promise.all(oldIngs.map(oi => dbDel('recipe_ingredients', oi.id)));
+      } else {
+        const res = await dbIns<RecipeCost>('recipe_costs', {
+          menu_item_id: menuItemId,
+          option_name: optionName,
+          total_cost: totalCost
+        });
+        if (!res || res.length === 0) throw new Error("Failed to create recipe costing header");
+        recipeCostId = res[0].id;
+      }
+
+      if (ingredients.length > 0) {
+        await Promise.all(ingredients.map(ing => 
+          dbIns<RecipeIngredient>('recipe_ingredients', {
+            recipe_cost_id: recipeCostId,
+            material_id: ing.material_id,
+            material_name: ing.material_name,
+            qty: ing.qty,
+            unit: ing.unit,
+            price: ing.price
+          })
+        ));
+      }
+
+      await loadData();
+      toast({ title: "Success", description: "Recipe costing saved successfully" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error saving recipe", description: err.message });
+      throw err;
+    }
+  }, [recipeCosts, recipeIngredients, loadData, toast]);
+
+  const addPurchase = useCallback(async (
+    materialName: string,
+    price: number,
+    qty: number,
+    unit: string,
+    date: string
+  ) => {
+    try {
+      let matId: number | null = null;
+      const existingMat = materials.find(m => m.name.toLowerCase() === materialName.toLowerCase());
+      if (existingMat) {
+        matId = existingMat.id;
+      } else {
+        const resMat = await dbIns<Material>('materials', { name: materialName });
+        if (resMat && resMat.length > 0) {
+          matId = resMat[0].id;
+          setMaterials(prev => [...prev, resMat[0]]);
+        }
+      }
+
+      await dbIns<MaterialPurchase>('material_purchases', {
+        material_id: matId,
+        material_name: materialName,
+        price,
+        qty,
+        unit,
+        purchase_date: date
+      });
+
+      await loadData();
+      toast({ title: "Success", description: "Purchase logged successfully" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error adding purchase", description: err.message });
+      throw err;
+    }
+  }, [materials, loadData, toast]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -100,9 +242,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <StoreContext.Provider value={{
       customers, walkins, menuItems, bills, preorders, mealSkips, packages, promotions, customerPackages,
+      materials, recipeCosts, recipeIngredients, materialPurchases,
       isLoading, error, refresh: loadData,
       searchQuery, setSearchQuery,
-      editingBill, setEditingBill
+      editingBill, setEditingBill,
+      addMaterial, saveRecipe, addPurchase
     }}>
       {children}
     </StoreContext.Provider>
