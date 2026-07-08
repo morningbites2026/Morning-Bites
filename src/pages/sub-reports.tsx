@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useStore } from "@/lib/store";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, Package, Users, UserPlus, RefreshCw, CheckCircle2, Utensils, CalendarCheck } from "lucide-react";
 
@@ -126,21 +127,21 @@ export default function SubReports() {
   const prepGroups = useMemo(() => {
     return activePackagesList.map(pkg => {
       const custForPkg = tomorrowCustomers.filter(c => {
-        // Check if customer has active customer_package for this pkg
-        const cp = customerPackages.find(cp =>
-          Number(cp.customer_id) === c.id &&
-          cp.package_id === pkg.id &&
-          cp.status === 'active' &&
-          cp.used < cp.total
-        );
-        
-        if (cp) {
-          // Check if this specific package is scheduled for tomorrow
-          const cpPrefDays = cp.preferred_days;
-          const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
-          return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+        // Get all active packages for this customer
+        const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
+
+        if (custPacks.length > 0) {
+          // Check if customer has active customer_package for this pkg
+          const cp = custPacks.find(cp => cp.package_id === pkg.id && cp.used < cp.total);
+          if (cp) {
+            // Check if this specific package is scheduled for tomorrow
+            const cpPrefDays = cp.preferred_days;
+            const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
+            return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+          }
+          return false;
         }
-        
+
         // Legacy fallback
         if (c.package_id === pkg.id && c.used < c.total) {
           const effectivePrefDays = c.preferred_days || [];
@@ -211,25 +212,20 @@ export default function SubReports() {
               </CardContent>
             </Card>
           ) : (
-            // Tabs per active package
-            <Tabs defaultValue={`pkg-${prepGroups[0].pkg.id}`} className="w-full">
-              <TabsList className={`w-full bg-muted/50 p-1 rounded-xl grid grid-cols-${Math.min(prepGroups.length, 3)}`}>
-                {prepGroups.map(g => (
-                  <TabsTrigger key={g.pkg.id} value={`pkg-${g.pkg.id}`} className="rounded-lg text-[11px] truncate">
-                    {g.pkg.name} ({g.customers.length})
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+            // Accordion per active package
+            <Accordion type="multiple" defaultValue={prepGroups.map(g => `pkg-${g.pkg.id}`)} className="w-full space-y-3">
               {prepGroups.map(g => (
-                <TabsContent key={g.pkg.id} value={`pkg-${g.pkg.id}`} className="mt-3">
-                  <Card className="border-border shadow-sm">
-                    <CardContent className="p-4 space-y-1.5">
-                      <div className="flex justify-between items-center mb-3">
-                        <div className="text-sm font-bold">{g.pkg.name}</div>
-                        <Badge className="bg-primary/10 text-primary border-primary/20 font-bold">
-                          {g.customers.length} customer{g.customers.length !== 1 ? 's' : ''}
-                        </Badge>
-                      </div>
+                <AccordionItem key={g.pkg.id} value={`pkg-${g.pkg.id}`} className="border border-border rounded-xl px-4 bg-card shadow-sm">
+                  <AccordionTrigger className="hover:no-underline py-3">
+                    <div className="flex justify-between items-center w-full pr-4">
+                      <span className="font-bold text-sm text-foreground">{g.pkg.name}</span>
+                      <Badge className="bg-primary/10 text-primary border-primary/20 font-bold ml-2">
+                        {g.customers.length} customer{g.customers.length !== 1 ? 's' : ''}
+                      </Badge>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pt-4 border-t border-border">
+                    <div className="space-y-1.5">
                       {g.customers.map((c, idx) => {
                         const cp = customerPackages.find(cp => Number(cp.customer_id) === c.id && cp.package_id === g.pkg.id && cp.status === 'active');
                         const used = cp ? cp.used : c.used;
@@ -254,11 +250,11 @@ export default function SubReports() {
                           </div>
                         );
                       })}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
               ))}
-            </Tabs>
+            </Accordion>
           )}
         </TabsContent>
       </Tabs>
