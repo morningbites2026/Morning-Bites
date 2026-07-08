@@ -1,10 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useStore } from "@/lib/store";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, Package, Users, UserPlus, RefreshCw, CheckCircle2, Utensils, CalendarCheck } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { TrendingUp, Package, Users, UserPlus, RefreshCw, CheckCircle2, Utensils, CalendarCheck, DollarSign, Calendar } from "lucide-react";
 
 function getISTTomorrowISO(): string {
   const d = new Date();
@@ -14,6 +16,57 @@ function getISTTomorrowISO(): string {
 
 export default function SubReports() {
   const { customers, packages, customerPackages, mealSkips } = useStore();
+
+  // Date states for custom revenue range
+  const todayISO = useMemo(() => {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  }, []);
+
+  const [revenueFromDate, setRevenueFromDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  });
+  
+  const [revenueToDate, setRevenueToDate] = useState<string>(todayISO);
+
+  const getISTDateOffsetISO = (daysOffset: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + daysOffset);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  };
+
+  const weeklyStartISO = useMemo(() => getISTDateOffsetISO(-7), []);
+  const monthlyStartISO = useMemo(() => getISTDateOffsetISO(-30), []);
+
+  const getSubRevenueForRange = useCallback((startISO: string, endISO: string) => {
+    // 1. Calculate revenue from customerPackages
+    let revenue = customerPackages
+      .filter(cp => cp.status !== 'cancelled' && cp.pack_start_date >= startISO && cp.pack_start_date <= endISO)
+      .reduce((sum, cp) => {
+        const pkg = packages.find(p => p.id === cp.package_id);
+        return sum + (pkg?.price || 0);
+      }, 0);
+
+    // 2. Add revenue from legacy customer packages (if customer has no customerPackages entries)
+    customers.forEach(c => {
+      if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
+        const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
+        if (!hasCp) {
+          if (c.pack_start_date >= startISO && c.pack_start_date <= endISO) {
+            const pkg = packages.find(p => p.id === c.package_id);
+            revenue += (pkg?.price || 0);
+          }
+        }
+      }
+    });
+
+    return revenue;
+  }, [customerPackages, packages, customers]);
+
+  const weeklyRevenue = useMemo(() => getSubRevenueForRange(weeklyStartISO, todayISO), [weeklyStartISO, todayISO, getSubRevenueForRange]);
+  const monthlyRevenue = useMemo(() => getSubRevenueForRange(monthlyStartISO, todayISO), [monthlyStartISO, todayISO, getSubRevenueForRange]);
+  const customPeriodRevenue = useMemo(() => getSubRevenueForRange(revenueFromDate, revenueToDate), [revenueFromDate, revenueToDate, getSubRevenueForRange]);
 
   const activeSubs = customers.filter(c => c.status === 'active' && !c.is_deleted);
   const activePacks = activeSubs.filter(c => c.used < c.total);
@@ -168,7 +221,7 @@ export default function SubReports() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="stats" className="mt-4">
+        <TabsContent value="stats" className="mt-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             {stats.map(s => (
               <Card key={s.label} className={`border ${s.border} ${s.bg} shadow-sm`}>
@@ -181,6 +234,62 @@ export default function SubReports() {
               </Card>
             ))}
           </div>
+
+          {/* Subscription Revenue Card */}
+          <Card className="border-border bg-card shadow-sm">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-base font-bold flex items-center gap-2 text-primary">
+                <DollarSign className="w-5 h-5" /> Subscription Revenue
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Revenue generated from subscription packages and renewals.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-2 space-y-4">
+              {/* Daily / Weekly / Monthly Quick Stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-muted/30 border border-border p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-muted-foreground font-bold uppercase">Weekly Revenue (7 Days)</div>
+                  <div className="text-xl font-black text-foreground mt-1">₹{weeklyRevenue}</div>
+                </div>
+                <div className="bg-muted/30 border border-border p-3 rounded-xl text-center">
+                  <div className="text-[10px] text-muted-foreground font-bold uppercase">Monthly Revenue (30 Days)</div>
+                  <div className="text-xl font-black text-foreground mt-1">₹{monthlyRevenue}</div>
+                </div>
+              </div>
+
+              {/* Custom Date Range Picker */}
+              <div className="space-y-2 pt-2 border-t border-border">
+                <Label className="text-xs font-semibold flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-primary" /> Custom Date Range
+                </Label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Label className="text-[9px] text-muted-foreground">From</Label>
+                    <Input
+                      type="date"
+                      value={revenueFromDate}
+                      onChange={e => setRevenueFromDate(e.target.value)}
+                      className="h-9 text-xs rounded-lg"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Label className="text-[9px] text-muted-foreground">To</Label>
+                    <Input
+                      type="date"
+                      value={revenueToDate}
+                      onChange={e => setRevenueToDate(e.target.value)}
+                      className="h-9 text-xs rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div className="bg-primary/5 border border-primary/20 p-3 rounded-xl flex justify-between items-center mt-2">
+                  <span className="text-xs font-semibold text-primary">Selected Period Revenue</span>
+                  <span className="text-lg font-black text-primary">₹{customPeriodRevenue}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="prep" className="mt-4 space-y-4">
