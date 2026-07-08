@@ -64,9 +64,89 @@ export default function SubReports() {
     return revenue;
   }, [customerPackages, packages, customers]);
 
+  const getSubCountsForRange = useCallback((startISO: string, endISO: string) => {
+    let newCount = 0;
+    let renewCount = 0;
+
+    // 1. Calculate counts from customerPackages
+    customerPackages
+      .filter(cp => cp.status !== 'cancelled' && cp.pack_start_date >= startISO && cp.pack_start_date <= endISO)
+      .forEach(cp => {
+        if (cp.renew_count === 0) {
+          newCount++;
+        } else {
+          renewCount++;
+        }
+      });
+
+    // 2. Add counts from legacy customer packages (if customer has no customerPackages entries)
+    customers.forEach(c => {
+      if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
+        const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
+        if (!hasCp) {
+          if (c.pack_start_date >= startISO && c.pack_start_date <= endISO) {
+            if (c.renew_count === 0) {
+              newCount++;
+            } else {
+              renewCount++;
+            }
+          }
+        }
+      }
+    });
+
+    return { newCount, renewCount };
+  }, [customerPackages, customers]);
+
   const weeklyRevenue = useMemo(() => getSubRevenueForRange(weeklyStartISO, todayISO), [weeklyStartISO, todayISO, getSubRevenueForRange]);
   const monthlyRevenue = useMemo(() => getSubRevenueForRange(monthlyStartISO, todayISO), [monthlyStartISO, todayISO, getSubRevenueForRange]);
   const customPeriodRevenue = useMemo(() => getSubRevenueForRange(revenueFromDate, revenueToDate), [revenueFromDate, revenueToDate, getSubRevenueForRange]);
+
+  const weeklyCounts = useMemo(() => getSubCountsForRange(weeklyStartISO, todayISO), [weeklyStartISO, todayISO, getSubCountsForRange]);
+  const monthlyCounts = useMemo(() => getSubCountsForRange(monthlyStartISO, todayISO), [monthlyStartISO, todayISO, getSubCountsForRange]);
+  const customCounts = useMemo(() => getSubCountsForRange(revenueFromDate, revenueToDate), [revenueFromDate, revenueToDate, getSubCountsForRange]);
+
+  const customSubDetails = useMemo(() => {
+    const list: Array<{ name: string; phone: string; pkgName: string; price: number; date: string; isRenew: boolean }> = [];
+    
+    customerPackages
+      .filter(cp => cp.status !== 'cancelled' && cp.pack_start_date >= revenueFromDate && cp.pack_start_date <= revenueToDate)
+      .forEach(cp => {
+        const cust = customers.find(c => c.id === Number(cp.customer_id));
+        const pkg = packages.find(p => p.id === cp.package_id);
+        if (cust) {
+          list.push({
+            name: cust.name,
+            phone: cust.phone,
+            pkgName: pkg?.name || "Unknown Package",
+            price: pkg?.price || 0,
+            date: cp.pack_start_date,
+            isRenew: cp.renew_count > 0
+          });
+        }
+      });
+
+    customers.forEach(c => {
+      if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
+        const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
+        if (!hasCp) {
+          if (c.pack_start_date >= revenueFromDate && c.pack_start_date <= revenueToDate) {
+            const pkg = packages.find(p => p.id === c.package_id);
+            list.push({
+              name: c.name,
+              phone: c.phone,
+              pkgName: pkg?.name || "Unknown Package",
+              price: pkg?.price || 0,
+              date: c.pack_start_date,
+              isRenew: c.renew_count > 0
+            });
+          }
+        }
+      }
+    });
+
+    return list;
+  }, [customerPackages, customers, packages, revenueFromDate, revenueToDate]);
 
   const activeSubs = customers.filter(c => c.status === 'active' && !c.is_deleted);
   const activePacks = activeSubs.filter(c => c.used < c.total);
@@ -248,13 +328,19 @@ export default function SubReports() {
             <CardContent className="p-4 pt-2 space-y-4">
               {/* Daily / Weekly / Monthly Quick Stats */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-muted/30 border border-border p-3 rounded-xl text-center">
+                <div className="bg-muted/30 border border-border p-3 rounded-xl text-center space-y-0.5">
                   <div className="text-[10px] text-muted-foreground font-bold uppercase">Weekly Revenue (7 Days)</div>
-                  <div className="text-xl font-black text-foreground mt-1">₹{weeklyRevenue}</div>
+                  <div className="text-xl font-black text-foreground">₹{weeklyRevenue}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {weeklyCounts.newCount} New · {weeklyCounts.renewCount} Renewed
+                  </div>
                 </div>
-                <div className="bg-muted/30 border border-border p-3 rounded-xl text-center">
+                <div className="bg-muted/30 border border-border p-3 rounded-xl text-center space-y-0.5">
                   <div className="text-[10px] text-muted-foreground font-bold uppercase">Monthly Revenue (30 Days)</div>
-                  <div className="text-xl font-black text-foreground mt-1">₹{monthlyRevenue}</div>
+                  <div className="text-xl font-black text-foreground">₹{monthlyRevenue}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {monthlyCounts.newCount} New · {monthlyCounts.renewCount} Renewed
+                  </div>
                 </div>
               </div>
 
@@ -283,10 +369,42 @@ export default function SubReports() {
                     />
                   </div>
                 </div>
-                <div className="bg-primary/5 border border-primary/20 p-3 rounded-xl flex justify-between items-center mt-2">
-                  <span className="text-xs font-semibold text-primary">Selected Period Revenue</span>
-                  <span className="text-lg font-black text-primary">₹{customPeriodRevenue}</span>
+                <div className="bg-primary/5 border border-primary/20 p-3 rounded-xl flex flex-col gap-2 mt-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-semibold text-primary">Selected Period Revenue</span>
+                    <span className="text-lg font-black text-primary">₹{customPeriodRevenue}</span>
+                  </div>
+                  <div className="text-[10px] text-primary/80 border-t border-primary/10 pt-1.5 flex justify-between">
+                    <span>New Subscriptions: <strong>{customCounts.newCount}</strong></span>
+                    <span>Renewals: <strong>{customCounts.renewCount}</strong></span>
+                  </div>
                 </div>
+
+                {customSubDetails.length > 0 && (
+                  <div className="mt-3 pt-2 space-y-1.5">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      Subscriber Details ({customSubDetails.length})
+                    </div>
+                    <div className="divide-y divide-border border border-border rounded-xl max-h-48 overflow-y-auto bg-muted/10 bg-white dark:bg-card">
+                      {customSubDetails.map((sub, i) => (
+                        <div key={i} className="p-2.5 flex justify-between items-center text-xs">
+                          <div>
+                            <div className="font-semibold text-foreground flex items-center gap-1.5">
+                              {sub.name}
+                              <Badge variant="outline" className={sub.isRenew ? "text-[9px] h-4 bg-blue-50 text-blue-700 border-blue-200" : "text-[9px] h-4 bg-green-50 text-green-700 border-green-200"}>
+                                {sub.isRenew ? "Renewal" : "New"}
+                              </Badge>
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {sub.pkgName} · {sub.date}
+                            </div>
+                          </div>
+                          <div className="font-bold text-foreground">₹{sub.price}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
