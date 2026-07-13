@@ -16,6 +16,7 @@ export default function RecipeCosting() {
   } = useStore();
 
   // --- Logger Form State ---
+  const [expenseTitle, setExpenseTitle] = useState<string>("");
   const [expenseDescription, setExpenseDescription] = useState<string>("");
   const [expenseAmount, setExpenseAmount] = useState<string>("");
   const [expenseDate, setExpenseDate] = useState<string>(
@@ -38,13 +39,14 @@ export default function RecipeCosting() {
   // --- Form Handlers ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseDescription.trim() || !expenseAmount) return;
+    if (!expenseTitle.trim() || !expenseDescription.trim() || !expenseAmount) return;
 
     setIsSaving(true);
     try {
       if (editingId) {
         await updateExpense(
           editingId,
+          expenseTitle.trim(),
           expenseDescription.trim(),
           Number(expenseAmount),
           expenseDate
@@ -52,11 +54,13 @@ export default function RecipeCosting() {
         setEditingId(null);
       } else {
         await addExpense(
+          expenseTitle.trim(),
           expenseDescription.trim(),
           Number(expenseAmount),
           expenseDate
         );
       }
+      setExpenseTitle("");
       setExpenseDescription("");
       setExpenseAmount("");
     } catch (err) {
@@ -68,6 +72,7 @@ export default function RecipeCosting() {
 
   const handleEdit = (e: any) => {
     setEditingId(e.id);
+    setExpenseTitle(e.title || "");
     setExpenseDescription(e.description);
     setExpenseAmount(e.amount.toString());
     setExpenseDate(e.expense_date);
@@ -75,6 +80,7 @@ export default function RecipeCosting() {
 
   const handleCancelEdit = () => {
     setEditingId(null);
+    setExpenseTitle("");
     setExpenseDescription("");
     setExpenseAmount("");
     setExpenseDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()));
@@ -103,7 +109,7 @@ export default function RecipeCosting() {
         // Keyword match
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
-          return e.description.toLowerCase().includes(q);
+          return (e.title || "").toLowerCase().includes(q) || e.description.toLowerCase().includes(q);
         }
         return true;
       })
@@ -134,6 +140,17 @@ export default function RecipeCosting() {
             </CardHeader>
             <CardContent className="p-4 pt-2">
               <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Title</Label>
+                  <Input
+                    placeholder="e.g. Vegetables, Packaging, Rent"
+                    value={expenseTitle}
+                    onChange={e => setExpenseTitle(e.target.value)}
+                    className="h-10 rounded-xl"
+                    required
+                  />
+                </div>
+
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">Description</Label>
                   <Input
@@ -220,7 +237,7 @@ export default function RecipeCosting() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Search expense description..."
+                  placeholder="Search title or description..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   className="h-9 pl-9 text-xs rounded-lg"
@@ -259,9 +276,10 @@ export default function RecipeCosting() {
                 <div className="divide-y divide-border border-t border-border max-h-[500px] overflow-y-auto bg-muted/5 dark:bg-card">
                   {filteredExpenses.map(e => (
                     <div key={e.id} className="p-3.5 flex justify-between items-center text-xs hover:bg-muted/10 transition-colors">
-                      <div className="space-y-1">
-                        <div className="font-semibold text-sm text-foreground">{e.description}</div>
-                        <div className="text-muted-foreground flex items-center gap-1.5">
+                      <div className="space-y-1 min-w-0 flex-1 pr-2">
+                        <div className="font-bold text-sm text-foreground truncate">{e.title || "Untitled Expense"}</div>
+                        <div className="text-muted-foreground truncate">{e.description}</div>
+                        <div className="text-muted-foreground flex items-center gap-1.5 text-[10px]">
                           <Calendar className="w-3 h-3" />
                           {new Date(e.expense_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </div>

@@ -27,8 +27,8 @@ type StoreState = {
   addMaterial: (name: string) => Promise<Material>;
   saveRecipe: (menuItemId: number, optionName: string, totalCost: number, ingredients: Omit<RecipeIngredient, 'id' | 'recipe_cost_id' | 'created_at'>[]) => Promise<void>;
   addPurchase: (materialName: string, price: number, qty: number, unit: string, date: string) => Promise<void>;
-  addExpense: (description: string, amount: number, date: string) => Promise<void>;
-  updateExpense: (id: number, description: string, amount: number, date: string) => Promise<void>;
+  addExpense: (title: string, description: string, amount: number, date: string) => Promise<void>;
+  updateExpense: (id: number, title: string, description: string, amount: number, date: string) => Promise<void>;
   deleteExpense: (id: number) => Promise<void>;
 };
 
@@ -249,12 +249,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [materials, loadData, toast]);
 
   const addExpense = useCallback(async (
+    title: string,
     description: string,
     amount: number,
     date: string
   ) => {
     try {
       await dbIns<Expense>('expenses', {
+        title,
         description,
         amount,
         expense_date: date
@@ -269,12 +271,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const updateExpense = useCallback(async (
     id: number,
+    title: string,
     description: string,
     amount: number,
     date: string
   ) => {
     try {
       await dbUpd('expenses', id, {
+        title,
         description,
         amount,
         expense_date: date
