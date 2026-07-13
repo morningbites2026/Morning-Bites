@@ -41,8 +41,12 @@ export default function Dashboard() {
     return dateStr;
   }, []);
 
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState<string>(() => {
+    const today = getISTISODate();
+    const [year, month] = today.split('-');
+    return `${year}-${month}-01`;
+  });
+  const [toDate, setToDate] = useState<string>(getISTISODate);
   const [historySearch, setHistorySearch] = useState("");
 
   // Preorder edit state
@@ -55,11 +59,6 @@ export default function Dashboard() {
   const [editPoExpandedGroup, setEditPoExpandedGroup] = useState<number | null>(null);
   const [isSavingPo, setIsSavingPo] = useState(false);
 
-  // Month start date string in IST YYYY-MM-DD
-  const msIso = useMemo(() => {
-    const [year, month] = todayIso.split('-');
-    return `${year}-${month}-01`;
-  }, [todayIso]);
 
   // Week start date string in IST YYYY-MM-DD (Monday start)
   const wsIso = useMemo(() => {
@@ -119,23 +118,35 @@ export default function Dashboard() {
   const weekSubRevenue = getSubRevenueForRange(wsIso, todayIso);
   const weekTotalRevenue = weekBillRevenue + weekSubRevenue;
 
-  const monthBills = bills.filter((b) => {
-    const bDate = billDateToISO(b.bill_date);
-    return bDate >= msIso && bDate <= todayIso;
-  });
-  const monthBillRevenue = monthBills.reduce((s, b) => s + b.total_amount, 0);
-  const monthSubRevenue = getSubRevenueForRange(msIso, todayIso);
-  const monthTotalRevenue = monthBillRevenue + monthSubRevenue;
+  const rangeBills = useMemo(() => {
+    return bills.filter((b) => {
+      const bDate = billDateToISO(b.bill_date);
+      return (!fromDate || bDate >= fromDate) && (!toDate || bDate <= toDate);
+    });
+  }, [bills, fromDate, toDate, billDateToISO]);
 
-  // Monthly Expenses calculation from new expenses table
-  const monthExpenses = useMemo(() => {
+  const rangeBillRevenue = useMemo(() => {
+    return rangeBills.reduce((s, b) => s + b.total_amount, 0);
+  }, [rangeBills]);
+
+  const rangeSubRevenue = useMemo(() => {
+    return getSubRevenueForRange(fromDate || '1970-01-01', toDate || '9999-12-31');
+  }, [fromDate, toDate, getSubRevenueForRange]);
+
+  const rangeTotalRevenue = useMemo(() => {
+    return rangeBillRevenue + rangeSubRevenue;
+  }, [rangeBillRevenue, rangeSubRevenue]);
+
+  const rangeExpenses = useMemo(() => {
     if (!expenses) return 0;
     return expenses
-      .filter(e => e.expense_date >= msIso && e.expense_date <= todayIso)
+      .filter(e => (!fromDate || e.expense_date >= fromDate) && (!toDate || e.expense_date <= toDate))
       .reduce((s, e) => s + e.amount, 0);
-  }, [expenses, msIso, todayIso]);
+  }, [expenses, fromDate, toDate]);
 
-  const monthActualEarning = monthTotalRevenue - monthExpenses;
+  const rangeActualEarning = useMemo(() => {
+    return rangeTotalRevenue - rangeExpenses;
+  }, [rangeTotalRevenue, rangeExpenses]);
 
   const pendingAdvance = bills.filter(b => b.advance_status === 'pending').reduce((s, b) => s + (b.advance_balance || 0), 0);
   const pendingOutstanding = bills.filter(b => b.outstanding_status === 'pending').reduce((s, b) => s + (b.outstanding_balance || 0), 0);
@@ -376,6 +387,30 @@ export default function Dashboard() {
 
         {/* ─── Earnings ─── */}
         <TabsContent value="earnings" className="mt-4 space-y-4">
+          {/* Date range filter fields */}
+          <Card className="border border-border shadow-sm">
+            <CardContent className="p-3.5 flex flex-row items-center gap-3">
+              <div className="flex-1 space-y-1">
+                <Label className="text-[10px] text-muted-foreground font-semibold uppercase">From Date</Label>
+                <Input
+                  type="date"
+                  value={fromDate}
+                  onChange={e => setFromDate(e.target.value)}
+                  className="h-9 text-xs rounded-lg"
+                />
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-[10px] text-muted-foreground font-semibold uppercase">To Date</Label>
+                <Input
+                  type="date"
+                  value={toDate}
+                  onChange={e => setToDate(e.target.value)}
+                  className="h-9 text-xs rounded-lg"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-2 gap-3">
             <Card className="border-border bg-primary text-primary-foreground shadow-md">
               <CardContent className="p-4">
@@ -404,11 +439,11 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <ReceiptText className="w-4 h-4" /> This Month
+                      <ReceiptText className="w-4 h-4" /> Filtered Period
                     </div>
-                    <div className="text-3xl font-black mt-1 text-primary">₹{monthTotalRevenue}</div>
+                    <div className="text-3xl font-black mt-1 text-primary">₹{rangeTotalRevenue}</div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Bills: ₹{monthBillRevenue} | Subs: ₹{monthSubRevenue}
+                      Bills: ₹{rangeBillRevenue} | Subs: ₹{rangeSubRevenue}
                     </div>
                   </div>
                   <Button variant="outline" className="rounded-full shrink-0" onClick={shareToday}>
@@ -418,12 +453,12 @@ export default function Dashboard() {
 
                 <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
                   <div className="bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/50 p-2.5 rounded-xl text-center">
-                    <div className="text-[10px] text-muted-foreground font-semibold uppercase">Monthly Expenses</div>
-                    <div className="text-lg font-black text-amber-700 dark:text-amber-500 mt-0.5">₹{monthExpenses}</div>
+                    <div className="text-[10px] text-muted-foreground font-semibold uppercase">Period Expenses</div>
+                    <div className="text-lg font-black text-amber-700 dark:text-amber-500 mt-0.5">₹{rangeExpenses}</div>
                   </div>
                   <div className="bg-green-50/50 dark:bg-green-950/10 border border-green-200/50 p-2.5 rounded-xl text-center">
                     <div className="text-[10px] text-muted-foreground font-semibold uppercase">Actual Net Earning</div>
-                    <div className="text-lg font-black text-green-700 dark:text-green-500 mt-0.5">₹{monthActualEarning}</div>
+                    <div className="text-lg font-black text-green-700 dark:text-green-500 mt-0.5">₹{rangeActualEarning}</div>
                   </div>
                 </div>
               </CardContent>

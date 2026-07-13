@@ -3,6 +3,7 @@ import { useStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, Edit2, Search, Calendar, Info, IndianRupee, X } from "lucide-react";
@@ -76,6 +77,7 @@ export default function RecipeCosting() {
     setExpenseDescription(e.description);
     setExpenseAmount(e.amount.toString());
     setExpenseDate(e.expense_date);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleCancelEdit = () => {
@@ -153,11 +155,11 @@ export default function RecipeCosting() {
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">Description</Label>
-                  <Input
+                  <Textarea
                     placeholder="e.g. Tomato, Salad Box, Milk"
                     value={expenseDescription}
                     onChange={e => setExpenseDescription(e.target.value)}
-                    className="h-10 rounded-xl"
+                    className="rounded-xl min-h-[80px]"
                     required
                   />
                 </div>
