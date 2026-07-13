@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback } from "react";
 import { useStore } from "@/lib/store";
 import { dbUpd, formatIST, getISTISODate, getISTDateDisplay } from "@/lib/supabase";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   CalendarDays, IndianRupee, TrendingUp, ReceiptText, Banknote, CreditCard,
-  QrCode, Share2, ClipboardList, CheckCircle2, Edit, X, ChevronDown, ChevronRight, Plus, Minus
+  QrCode, Share2, ClipboardList, CheckCircle2, Edit, X, ChevronDown, ChevronRight, Plus, Minus,
+  Layers
 } from "lucide-react";
 
 function isoDate(d: Date) {
@@ -147,6 +148,55 @@ export default function Dashboard() {
   const rangeActualEarning = useMemo(() => {
     return rangeTotalRevenue - rangeExpenses;
   }, [rangeTotalRevenue, rangeExpenses]);
+
+  // Custom range item quantity sold statistics
+  const itemQuantityStats = useMemo(() => {
+    const counts: { [name: string]: { name: string; billingQty: number; subQty: number; totalQty: number } } = {};
+
+    const getMultiplier = (name: string): number => {
+      const lower = name.toLowerCase();
+      if (lower.includes("thepla")) return 3;
+      if (lower.includes("paratha")) return 3;
+      return 1;
+    };
+
+    // 1. From Walk-in / Preorder Bills
+    rangeBills.forEach(b => {
+      b.items.forEach(item => {
+        const mult = getMultiplier(item.name);
+        const qty = item.qty * mult;
+        if (!counts[item.name]) {
+          counts[item.name] = { name: item.name, billingQty: 0, subQty: 0, totalQty: 0 };
+        }
+        counts[item.name].billingQty += qty;
+        counts[item.name].totalQty += qty;
+      });
+    });
+
+    // 2. From Subscriptions
+    const rangeSubPacks = customerPackages ? customerPackages.filter(cp => {
+      return cp.status !== 'cancelled' && cp.pack_start_date >= (fromDate || '1970-01-01') && cp.pack_start_date <= (toDate || '9999-12-31');
+    }) : [];
+
+    rangeSubPacks.forEach(cp => {
+      const pkg = packages.find(p => p.id === cp.package_id);
+      if (!pkg) return;
+      
+      const matchedMenuItem = menuItems.find(mi => pkg.name.toLowerCase().includes(mi.name.toLowerCase()));
+      const itemName = matchedMenuItem ? matchedMenuItem.name : pkg.name;
+
+      const mult = getMultiplier(itemName);
+      const qty = cp.total * mult;
+
+      if (!counts[itemName]) {
+        counts[itemName] = { name: itemName, billingQty: 0, subQty: 0, totalQty: 0 };
+      }
+      counts[itemName].subQty += qty;
+      counts[itemName].totalQty += qty;
+    });
+
+    return Object.values(counts).sort((a, b) => b.totalQty - a.totalQty);
+  }, [rangeBills, customerPackages, packages, menuItems, fromDate, toDate]);
 
   const pendingAdvance = bills.filter(b => b.advance_status === 'pending').reduce((s, b) => s + (b.advance_balance || 0), 0);
   const pendingOutstanding = bills.filter(b => b.outstanding_status === 'pending').reduce((s, b) => s + (b.outstanding_balance || 0), 0);
@@ -379,8 +429,9 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-300 pb-8">
       <Tabs defaultValue="earnings" className="w-full">
-        <TabsList className="w-full bg-muted/50 p-1 grid grid-cols-3 rounded-xl">
+        <TabsList className="w-full bg-muted/50 p-1 grid grid-cols-4 rounded-xl">
           <TabsTrigger value="earnings" className="rounded-lg text-xs">Earnings</TabsTrigger>
+          <TabsTrigger value="quantity" className="rounded-lg text-xs">Quantity</TabsTrigger>
           <TabsTrigger value="history" className="rounded-lg text-xs">History</TabsTrigger>
           <TabsTrigger value="preorders" className="rounded-lg text-xs">Preorders</TabsTrigger>
         </TabsList>
@@ -463,22 +514,93 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
-
-            <div className="col-span-2 grid grid-cols-2 gap-3 mt-1">
-              <Card className="border-green-200 bg-green-50 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="text-xs font-bold text-green-700 uppercase tracking-wider">Customer Credit</div>
-                  <div className="text-xl font-black text-green-800 mt-1">₹{pendingAdvance}</div>
-                </CardContent>
-              </Card>
-              <Card className="border-red-200 bg-red-50 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="text-xs font-bold text-red-700 uppercase tracking-wider">Pending Amount</div>
-                  <div className="text-xl font-black text-red-800 mt-1">₹{pendingOutstanding}</div>
-                </CardContent>
-              </Card>
-            </div>
           </div>
+
+          <div className="col-span-2 grid grid-cols-2 gap-3 mt-1">
+            <Card className="border-green-200 bg-green-50 shadow-sm">
+              <CardContent className="p-4">
+                <div className="text-xs font-bold text-green-700 uppercase tracking-wider">Customer Credit</div>
+                <div className="text-xl font-black text-green-800 mt-1">₹{pendingAdvance}</div>
+              </CardContent>
+            </Card>
+            <Card className="border-red-200 bg-red-50 shadow-sm">
+              <CardContent className="p-4">
+                <div className="text-xs font-bold text-red-700 uppercase tracking-wider">Pending Amount</div>
+                <div className="text-xl font-black text-red-800 mt-1">₹{pendingOutstanding}</div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ─── Quantity Stats ─── */}
+        <TabsContent value="quantity" className="mt-4 space-y-4">
+          {/* Date range filter fields */}
+          <Card className="border border-border shadow-sm">
+            <CardContent className="p-3.5 flex flex-row items-center gap-3">
+              <div className="flex-1 space-y-1">
+                <Label className="text-[10px] text-muted-foreground font-semibold uppercase">From Date</Label>
+                <Input
+                  type="date"
+                  value={fromDate}
+                  onChange={e => setFromDate(e.target.value)}
+                  className="h-9 text-xs rounded-lg"
+                />
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-[10px] text-muted-foreground font-semibold uppercase">To Date</Label>
+                <Input
+                  type="date"
+                  value={toDate}
+                  onChange={e => setToDate(e.target.value)}
+                  className="h-9 text-xs rounded-lg"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border shadow-sm">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Layers className="w-4 h-4 text-primary" /> Sales Quantity
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Total item count sold in selected period (including pieces multiplier for Thepla/Paratha).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              {itemQuantityStats.length === 0 ? (
+                <div className="text-center p-8 text-muted-foreground text-xs">
+                  No sales found in this period.
+                </div>
+              ) : (
+                <div className="space-y-4 mt-2">
+                  {itemQuantityStats.map(stat => {
+                    const maxQty = itemQuantityStats[0]?.totalQty || 1;
+                    const percent = Math.min(100, Math.max(5, (stat.totalQty / maxQty) * 100));
+                    
+                    return (
+                      <div key={stat.name} className="space-y-1">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-sm text-foreground">{stat.name}</span>
+                          <span className="font-black text-sm text-primary">{stat.totalQty} qty</span>
+                        </div>
+                        <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-primary rounded-full transition-all duration-500" 
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground">
+                          <span>Billing: {stat.billingQty} qty</span>
+                          <span>Subscriptions: {stat.subQty} qty</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ─── History ─── */}
