@@ -28,6 +28,8 @@ type StoreState = {
   saveRecipe: (menuItemId: number, optionName: string, totalCost: number, ingredients: Omit<RecipeIngredient, 'id' | 'recipe_cost_id' | 'created_at'>[]) => Promise<void>;
   addPurchase: (materialName: string, price: number, qty: number, unit: string, date: string) => Promise<void>;
   addExpense: (description: string, amount: number, date: string) => Promise<void>;
+  updateExpense: (id: number, description: string, amount: number, date: string) => Promise<void>;
+  deleteExpense: (id: number) => Promise<void>;
 };
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -265,6 +267,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [loadData, toast]);
 
+  const updateExpense = useCallback(async (
+    id: number,
+    description: string,
+    amount: number,
+    date: string
+  ) => {
+    try {
+      await dbUpd('expenses', id, {
+        description,
+        amount,
+        expense_date: date
+      });
+      await loadData();
+      toast({ title: "Success", description: "Expense updated successfully" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error updating expense", description: err.message });
+      throw err;
+    }
+  }, [loadData, toast]);
+
+  const deleteExpense = useCallback(async (id: number) => {
+    if (!window.confirm("Are you sure you want to delete this expense?")) return;
+    try {
+      await dbDel('expenses', id);
+      await loadData();
+      toast({ title: "Success", description: "Expense deleted successfully" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error deleting expense", description: err.message });
+      throw err;
+    }
+  }, [loadData, toast]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -276,7 +310,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       isLoading, error, refresh: loadData,
       searchQuery, setSearchQuery,
       editingBill, setEditingBill,
-      addMaterial, saveRecipe, addPurchase, addExpense
+      addMaterial, saveRecipe, addPurchase, addExpense, updateExpense, deleteExpense
     }}>
       {children}
     </StoreContext.Provider>
