@@ -182,7 +182,14 @@ export default function Dashboard() {
       const pkg = packages.find(p => p.id === cp.package_id);
       if (!pkg) return;
       
-      const matchedMenuItem = menuItems.find(mi => pkg.name.toLowerCase().includes(mi.name.toLowerCase()));
+      const matchedMenuItem = menuItems.find(mi => {
+        const pkgLower = pkg.name.toLowerCase();
+        const miLower = mi.name.toLowerCase();
+        if (pkgLower.includes(miLower) || miLower.includes(pkgLower)) return true;
+        const pkgWords = pkgLower.split(/\s+/).filter(w => w.length > 2);
+        const miWords = miLower.split(/\s+/).filter(w => w.length > 2);
+        return pkgWords.some(pw => miWords.includes(pw));
+      });
       const itemName = matchedMenuItem ? matchedMenuItem.name : pkg.name;
 
       const mult = getMultiplier(itemName);
