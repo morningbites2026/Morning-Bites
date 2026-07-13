@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
-import { dbGet, Customer, Walkin, MenuItem, Bill, MealSkip, Package, Promotion, Preorder, CustomerPackage, Material, RecipeCost, RecipeIngredient, MaterialPurchase, dbIns, dbDel, dbUpd } from "./supabase";
+import { dbGet, Customer, Walkin, MenuItem, Bill, MealSkip, Package, Promotion, Preorder, CustomerPackage, Material, RecipeCost, RecipeIngredient, MaterialPurchase, Expense, dbIns, dbDel, dbUpd } from "./supabase";
 import { useToast } from "@/hooks/use-toast";
 
 type StoreState = {
@@ -16,6 +16,7 @@ type StoreState = {
   recipeCosts: RecipeCost[];
   recipeIngredients: RecipeIngredient[];
   materialPurchases: MaterialPurchase[];
+  expenses: Expense[];
   isLoading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
@@ -26,6 +27,7 @@ type StoreState = {
   addMaterial: (name: string) => Promise<Material>;
   saveRecipe: (menuItemId: number, optionName: string, totalCost: number, ingredients: Omit<RecipeIngredient, 'id' | 'recipe_cost_id' | 'created_at'>[]) => Promise<void>;
   addPurchase: (materialName: string, price: number, qty: number, unit: string, date: string) => Promise<void>;
+  addExpense: (description: string, amount: number, date: string) => Promise<void>;
 };
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -44,6 +46,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [recipeCosts, setRecipeCosts] = useState<RecipeCost[]>([]);
   const [recipeIngredients, setRecipeIngredients] = useState<RecipeIngredient[]>([]);
   const [materialPurchases, setMaterialPurchases] = useState<MaterialPurchase[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -125,6 +128,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch (err: any) {
         console.error("Failed to load material_purchases:", err);
         setMaterialPurchases([]);
+      }
+
+      try {
+        const exp = await dbGet<Expense>('expenses');
+        setExpenses(exp);
+      } catch (err: any) {
+        console.error("Failed to load expenses:", err);
+        setExpenses([]);
       }
     } catch (err: any) {
       console.error(err);
@@ -235,6 +246,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [materials, loadData, toast]);
 
+  const addExpense = useCallback(async (
+    description: string,
+    amount: number,
+    date: string
+  ) => {
+    try {
+      await dbIns<Expense>('expenses', {
+        description,
+        amount,
+        expense_date: date
+      });
+      await loadData();
+      toast({ title: "Success", description: "Expense logged successfully" });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error adding expense", description: err.message });
+      throw err;
+    }
+  }, [loadData, toast]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -242,11 +272,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <StoreContext.Provider value={{
       customers, walkins, menuItems, bills, preorders, mealSkips, packages, promotions, customerPackages,
-      materials, recipeCosts, recipeIngredients, materialPurchases,
+      materials, recipeCosts, recipeIngredients, materialPurchases, expenses,
       isLoading, error, refresh: loadData,
       searchQuery, setSearchQuery,
       editingBill, setEditingBill,
-      addMaterial, saveRecipe, addPurchase
+      addMaterial, saveRecipe, addPurchase, addExpense
     }}>
       {children}
     </StoreContext.Provider>

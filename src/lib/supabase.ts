@@ -227,6 +227,14 @@ export interface MaterialPurchase {
   created_at: string;
 }
 
+export interface Expense {
+  id: number;
+  description: string;
+  amount: number;
+  expense_date: string;
+  created_at: string;
+}
+
 export async function dbGet<T>(table: string, query?: string): Promise<T[]> {
   ensureSupabaseEnv();
   const url = `${supabaseUrl}/rest/v1/${table}?${query || 'select=*'}&order=created_at.desc`;

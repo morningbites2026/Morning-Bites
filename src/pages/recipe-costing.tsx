@@ -25,13 +25,13 @@ export default function RecipeCosting() {
     materials,
     recipeCosts,
     recipeIngredients,
-    materialPurchases,
+    expenses,
     packages,
     bills,
     customerPackages,
     addMaterial,
     saveRecipe,
-    addPurchase
+    addExpense
   } = useStore();
 
   // --- TAB 1: Recipe Costing Builder State ---
@@ -167,49 +167,31 @@ export default function RecipeCosting() {
   };
 
 
-  // --- TAB 2: Purchase Logger State ---
-  const [purchaseMaterialId, setPurchaseMaterialId] = useState<string>("");
-  const [purchaseCustomName, setPurchaseCustomName] = useState<string>("");
-  const [purchasePrice, setPurchasePrice] = useState<string>("");
-  const [purchaseQty, setPurchaseQty] = useState<string>("");
-  const [purchaseUnit, setPurchaseUnit] = useState<string>("kg");
-  const [purchaseDate, setPurchaseDate] = useState<string>(
+  // --- TAB 2: Expense Logger State ---
+  const [expenseDescription, setExpenseDescription] = useState<string>("");
+  const [expenseAmount, setExpenseAmount] = useState<string>("");
+  const [expenseDate, setExpenseDate] = useState<string>(
     new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
   );
-  const [isLoggingPurchase, setIsLoggingPurchase] = useState(false);
+  const [isLoggingExpense, setIsLoggingExpense] = useState(false);
 
-  const handleLogPurchase = async (e: React.FormEvent) => {
+  const handleLogExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!purchasePrice || !purchaseQty) return;
+    if (!expenseDescription.trim() || !expenseAmount) return;
 
-    let materialName = "";
-    if (purchaseMaterialId === "OTHER") {
-      if (!purchaseCustomName.trim()) return;
-      materialName = purchaseCustomName.trim();
-    } else {
-      const mat = materials.find(m => m.id.toString() === purchaseMaterialId);
-      if (!mat) return;
-      materialName = mat.name;
-    }
-
-    setIsLoggingPurchase(true);
+    setIsLoggingExpense(true);
     try {
-      await addPurchase(
-        materialName,
-        Number(purchasePrice),
-        Number(purchaseQty),
-        purchaseUnit,
-        purchaseDate
+      await addExpense(
+        expenseDescription.trim(),
+        Number(expenseAmount),
+        expenseDate
       );
-      setPurchaseMaterialId("");
-      setPurchaseCustomName("");
-      setPurchasePrice("");
-      setPurchaseQty("");
-      setPurchaseUnit("kg");
+      setExpenseDescription("");
+      setExpenseAmount("");
     } catch (err) {
       console.error(err);
     } finally {
-      setIsLoggingPurchase(false);
+      setIsLoggingExpense(false);
     }
   };
 
@@ -291,32 +273,32 @@ export default function RecipeCosting() {
       return sum + (mealCost * cp.total);
     }, 0);
 
-    // Bulk Expenses/Purchases in period
-    const filteredPurchases = materialPurchases.filter(p => {
-      const pDate = new Date(p.purchase_date + 'T00:00:00');
-      return pDate >= startDate && pDate <= today;
+    // Expenses in period
+    const filteredExpenses = expenses.filter(e => {
+      const eDate = new Date(e.expense_date + 'T00:00:00');
+      return eDate >= startDate && eDate <= today;
     });
 
-    const totalBulkPurchases = filteredPurchases.reduce((sum, p) => sum + p.price, 0);
+    const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
     // Calculations
     const totalRevenue = directBillsRevenue + subscriptionRevenue;
     const totalCogs = directBillsCogs + subscriptionCogs;
     const grossProfit = totalRevenue - totalCogs;
-    const netProfit = totalRevenue - totalCogs - totalBulkPurchases;
+    const netProfit = totalRevenue - totalCogs - totalExpenses;
 
     return {
       revenue: totalRevenue,
       cogs: totalCogs,
-      bulkPurchases: totalBulkPurchases,
+      bulkPurchases: totalExpenses,
       grossProfit,
       netProfit,
       margin: totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
       billsCount: filteredBills.length,
       subsCount: filteredSubPacks.length,
-      purchasesList: filteredPurchases
+      purchasesList: filteredExpenses
     };
-  }, [bills, customerPackages, materialPurchases, recipeCosts, packages, menuItems, reportPeriod, getRecipeCostForPackage]);
+  }, [bills, customerPackages, expenses, recipeCosts, packages, menuItems, reportPeriod, getRecipeCostForPackage]);
 
 
   return (
@@ -543,92 +525,47 @@ export default function RecipeCosting() {
           </Card>
         </TabsContent>
 
-        {/* --- TAB 2: Raw Material Purchase Logger --- */}
+        {/* --- TAB 2: Expense Logger --- */}
         <TabsContent value="purchases" className="mt-4 space-y-4">
           <Card className="border border-border shadow-sm">
             <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-base font-semibold">Log Bulk Purchase</CardTitle>
+              <CardTitle className="text-base font-semibold">Log Expense</CardTitle>
               <CardDescription className="text-xs">
-                Log daily purchase receipts of materials to track costs and overall store expenses.
+                Log daily store expenses.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <form onSubmit={handleLogPurchase} className="space-y-4">
+              <form onSubmit={handleLogExpense} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs font-semibold">Material</Label>
-                    <Select onValueChange={setPurchaseMaterialId} value={purchaseMaterialId}>
-                      <SelectTrigger className="h-10 rounded-xl">
-                        <SelectValue placeholder="Select material" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {materials.map(m => (
-                          <SelectItem key={m.id} value={m.id.toString()}>
-                            {m.name}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value="OTHER" className="font-bold text-primary">
-                          + Add Custom Material (Other)
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {purchaseMaterialId === "OTHER" && (
-                    <div className="space-y-1.5 col-span-2">
-                      <Label className="text-xs font-semibold">Custom Material Name</Label>
-                      <Input
-                        placeholder="e.g. Avocado"
-                        value={purchaseCustomName}
-                        onChange={e => setPurchaseCustomName(e.target.value)}
-                        className="h-10 rounded-xl border-primary/20"
-                        required
-                      />
-                    </div>
-                  )}
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Price (₹)</Label>
+                    <Label className="text-xs font-semibold">Description</Label>
                     <Input
-                      type="number"
-                      placeholder="0"
-                      value={purchasePrice}
-                      onChange={e => setPurchasePrice(e.target.value)}
+                      placeholder="e.g. Tomato, Salad Box, Milk"
+                      value={expenseDescription}
+                      onChange={e => setExpenseDescription(e.target.value)}
                       className="h-10 rounded-xl"
                       required
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Qty</Label>
-                    <div className="flex gap-1.5">
-                      <Input
-                        type="number"
-                        placeholder="0"
-                        value={purchaseQty}
-                        onChange={e => setPurchaseQty(e.target.value)}
-                        className="h-10 rounded-xl flex-1"
-                        required
-                      />
-                      <Select value={purchaseUnit} onValueChange={setPurchaseUnit}>
-                        <SelectTrigger className="h-10 rounded-xl w-20 shrink-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {["kg", "gm", "liter", "ml", "piece", "packet"].map(u => (
-                            <SelectItem key={u} value={u}>{u}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <Label className="text-xs font-semibold">Amount (₹)</Label>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={expenseAmount}
+                      onChange={e => setExpenseAmount(e.target.value)}
+                      className="h-10 rounded-xl"
+                      required
+                    />
                   </div>
 
-                  <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs font-semibold">Purchase Date</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Expense Date</Label>
                     <Input
                       type="date"
-                      value={purchaseDate}
-                      onChange={e => setPurchaseDate(e.target.value)}
+                      value={expenseDate}
+                      onChange={e => setExpenseDate(e.target.value)}
                       className="h-10 rounded-xl"
                       required
                     />
@@ -638,33 +575,33 @@ export default function RecipeCosting() {
                 <Button
                   type="submit"
                   className="w-full rounded-xl h-11 text-xs font-semibold shadow-md"
-                  disabled={isLoggingPurchase}
+                  disabled={isLoggingExpense}
                 >
-                  {isLoggingPurchase ? "Logging Purchase..." : "Log Expense"}
+                  {isLoggingExpense ? "Logging Expense..." : "Log Expense"}
                 </Button>
               </form>
             </CardContent>
           </Card>
 
-          {/* Recent Purchases List */}
+          {/* Recent Expenses List */}
           <Card className="border border-border shadow-sm">
             <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-base font-semibold">Recent Purchases</CardTitle>
+              <CardTitle className="text-base font-semibold">Recent Expenses</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              {materialPurchases.length === 0 ? (
-                <div className="text-center p-8 text-muted-foreground text-xs">
-                  No purchases logged yet.
-                </div>
+              {expenses.length === 0 ? (
+                 <div className="text-center p-8 text-muted-foreground text-xs">
+                   No expenses logged yet.
+                 </div>
               ) : (
                 <div className="divide-y divide-border border-t border-border max-h-64 overflow-y-auto">
-                  {materialPurchases.map(p => (
-                    <div key={p.id} className="p-3 flex justify-between items-center text-xs">
+                  {expenses.map(e => (
+                    <div key={e.id} className="p-3 flex justify-between items-center text-xs">
                       <div>
-                        <div className="font-semibold text-sm">{p.material_name}</div>
-                        <div className="text-muted-foreground mt-0.5">{p.qty} {p.unit} · {new Date(p.purchase_date).toLocaleDateString('en-IN')}</div>
+                        <div className="font-semibold text-sm">{e.description}</div>
+                        <div className="text-muted-foreground mt-0.5">{new Date(e.expense_date).toLocaleDateString('en-IN')}</div>
                       </div>
-                      <div className="font-bold text-foreground text-sm">₹{p.price}</div>
+                      <div className="font-bold text-foreground text-sm">₹{e.amount}</div>
                     </div>
                   ))}
                 </div>
@@ -728,11 +665,11 @@ export default function RecipeCosting() {
             <Card className="border-border shadow-sm col-span-2">
               <CardContent className="p-4 flex justify-between items-center">
                 <div>
-                  <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Other Bulk expenses</div>
+                  <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Store expenses</div>
                   <div className="text-lg font-bold text-amber-600">₹{reportData.bulkPurchases.toFixed(0)}</div>
                 </div>
                 <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
-                  {reportData.purchasesList.length} purchases
+                  {reportData.purchasesList.length} expenses
                 </Badge>
               </CardContent>
             </Card>
@@ -746,17 +683,17 @@ export default function RecipeCosting() {
             <CardContent className="p-0">
               {reportData.purchasesList.length === 0 ? (
                 <div className="text-center p-8 text-muted-foreground text-xs">
-                  No purchases logged in this period.
+                  No expenses logged in this period.
                 </div>
               ) : (
                 <div className="divide-y divide-border border-t border-border max-h-60 overflow-y-auto">
-                  {reportData.purchasesList.map(p => (
-                    <div key={p.id} className="p-3 flex justify-between items-center text-xs">
+                  {reportData.purchasesList.map(e => (
+                    <div key={e.id} className="p-3 flex justify-between items-center text-xs">
                       <div>
-                        <div className="font-semibold">{p.material_name}</div>
-                        <div className="text-muted-foreground mt-0.5">{p.qty} {p.unit} · {new Date(p.purchase_date).toLocaleDateString('en-IN')}</div>
+                        <div className="font-semibold">{e.description}</div>
+                        <div className="text-muted-foreground mt-0.5">{new Date(e.expense_date).toLocaleDateString('en-IN')}</div>
                       </div>
-                      <div className="font-bold text-foreground">₹{p.price}</div>
+                      <div className="font-bold text-foreground">₹{e.amount}</div>
                     </div>
                   ))}
                 </div>
@@ -770,7 +707,7 @@ export default function RecipeCosting() {
             <div className="space-y-1">
               <div className="font-bold">Calculations Info</div>
               <p className="leading-relaxed">
-                **Revenue** integrates direct Walk-in bills & Active Subscriptions. **Recipe COGS** is generated by applying your saved recipe cost price to item sales counts & active subscriptions. **Bulk expenses** represent raw material purchases entered in Tab 2.
+                **Revenue** integrates direct Walk-in bills & Active Subscriptions. **Recipe COGS** is generated by applying your saved recipe cost price to item sales counts & active subscriptions. **Store expenses** represent expenses entered in Tab 2.
               </p>
             </div>
           </div>

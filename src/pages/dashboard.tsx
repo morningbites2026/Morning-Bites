@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useStore } from "@/lib/store";
 import { dbUpd, formatIST, getISTISODate, getISTDateDisplay } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,19 +19,6 @@ function isoDate(d: Date) {
   return d.toISOString().split("T")[0];
 }
 
-function weekStart(d: Date) {
-  const x = new Date(d);
-  const day = x.getDay();
-  const diff = x.getDate() - (day === 0 ? 6 : day - 1);
-  x.setHours(0, 0, 0, 0);
-  x.setDate(diff);
-  return x;
-}
-
-function monthStart(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
-}
-
 function openWhatsAppShare(text: string) {
   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
 }
@@ -41,21 +28,18 @@ function prettyDate(iso: string) {
 }
 
 export default function Dashboard() {
-  const { bills, preorders, menuItems, refresh } = useStore();
+  const { bills, preorders, menuItems, customers, packages, customerPackages, expenses, refresh } = useStore();
   const { toast } = useToast();
 
-  const now = new Date();
   const todayIso = getISTISODate();
   const todayStr = getISTDateDisplay();
-  const ws = weekStart(now);
-  const ms = monthStart(now);
 
-  const billDateToISO = (dateStr: string): string => {
+  const billDateToISO = useCallback((dateStr: string): string => {
     if (!dateStr) return '';
     const parts = dateStr.split('/');
     if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
     return dateStr;
-  };
+  }, []);
 
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -71,14 +55,87 @@ export default function Dashboard() {
   const [editPoExpandedGroup, setEditPoExpandedGroup] = useState<number | null>(null);
   const [isSavingPo, setIsSavingPo] = useState(false);
 
+  // Month start date string in IST YYYY-MM-DD
+  const msIso = useMemo(() => {
+    const [year, month] = todayIso.split('-');
+    return `${year}-${month}-01`;
+  }, [todayIso]);
+
+  // Week start date string in IST YYYY-MM-DD (Monday start)
+  const wsIso = useMemo(() => {
+    const [year, month, day] = todayIso.split('-');
+    const d = new Date(Number(year), Number(month) - 1, Number(day));
+    const dayOfWeek = d.getDay();
+    const diff = d.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+    const wsDate = new Date(Number(year), Number(month) - 1, diff);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${wsDate.getFullYear()}-${pad(wsDate.getMonth() + 1)}-${pad(wsDate.getDate())}`;
+  }, [todayIso]);
+
+  // Helper to compute subscription revenue for range
+  const getSubRevenueForRange = useCallback((startISO: string, endISO: string) => {
+    let revenue = 0;
+    
+    // 1. Modern customerPackages
+    if (customerPackages && customerPackages.length > 0) {
+      revenue += customerPackages
+        .filter(cp => cp.status !== 'cancelled' && cp.pack_start_date >= startISO && cp.pack_start_date <= endISO)
+        .reduce((sum, cp) => {
+          const pkg = packages.find(p => p.id === cp.package_id);
+          return sum + (pkg?.price || 0);
+        }, 0);
+    }
+
+    // 2. Legacy customers fallback
+    if (customers && customers.length > 0) {
+      customers.forEach(c => {
+        if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
+          const hasCp = customerPackages ? customerPackages.some(cp => Number(cp.customer_id) === c.id) : false;
+          if (!hasCp) {
+            const parsedStartDate = billDateToISO(c.pack_start_date);
+            if (parsedStartDate >= startISO && parsedStartDate <= endISO) {
+              const pkg = packages.find(p => p.id === c.package_id);
+              revenue += (pkg?.price || 0);
+            }
+          }
+        }
+      });
+    }
+
+    return revenue;
+  }, [customerPackages, packages, customers, billDateToISO]);
+
+  // Filter bills in IST periods
   const todayBills = bills.filter((b) => billDateToISO(b.bill_date) === todayIso);
-  const todayRevenue = todayBills.reduce((s, b) => s + b.total_amount, 0);
+  const todayBillRevenue = todayBills.reduce((s, b) => s + b.total_amount, 0);
+  const todaySubRevenue = getSubRevenueForRange(todayIso, todayIso);
+  const todayTotalRevenue = todayBillRevenue + todaySubRevenue;
 
-  const weekBills = bills.filter((b) => new Date(b.created_at) >= ws);
-  const weekRevenue = weekBills.reduce((s, b) => s + b.total_amount, 0);
+  const weekBills = bills.filter((b) => {
+    const bDate = billDateToISO(b.bill_date);
+    return bDate >= wsIso && bDate <= todayIso;
+  });
+  const weekBillRevenue = weekBills.reduce((s, b) => s + b.total_amount, 0);
+  const weekSubRevenue = getSubRevenueForRange(wsIso, todayIso);
+  const weekTotalRevenue = weekBillRevenue + weekSubRevenue;
 
-  const monthBills = bills.filter((b) => new Date(b.created_at) >= ms);
-  const monthRevenue = monthBills.reduce((s, b) => s + b.total_amount, 0);
+  const monthBills = bills.filter((b) => {
+    const bDate = billDateToISO(b.bill_date);
+    return bDate >= msIso && bDate <= todayIso;
+  });
+  const monthBillRevenue = monthBills.reduce((s, b) => s + b.total_amount, 0);
+  const monthSubRevenue = getSubRevenueForRange(msIso, todayIso);
+  const monthTotalRevenue = monthBillRevenue + monthSubRevenue;
+
+  // Monthly Expenses calculation from new expenses table
+  const monthExpenses = useMemo(() => {
+    if (!expenses) return 0;
+    return expenses
+      .filter(e => e.expense_date >= msIso && e.expense_date <= todayIso)
+      .reduce((s, e) => s + e.amount, 0);
+  }, [expenses, msIso, todayIso]);
+
+  const monthActualEarning = monthTotalRevenue - monthExpenses;
 
   const pendingAdvance = bills.filter(b => b.advance_status === 'pending').reduce((s, b) => s + (b.advance_balance || 0), 0);
   const pendingOutstanding = bills.filter(b => b.outstanding_status === 'pending').reduce((s, b) => s + (b.outstanding_balance || 0), 0);
@@ -150,11 +207,14 @@ export default function Dashboard() {
       `Morning Bites – Earnings`,
       ``,
       `Today (${todayStr})`,
-      `Total: ₹${todayRevenue}`,
-      `Bills: ${todayBills.length}`,
-      `Cash: ₹${todayBills.filter(b => b.payment_mode === "cash").reduce((s, b) => s + b.total_amount, 0)}`,
-      `UPI: ₹${todayBills.filter(b => b.payment_mode === "upi").reduce((s, b) => s + b.total_amount, 0)}`,
-      `Scan & Pay: ₹${todayBills.filter(b => b.payment_mode === "scanpay").reduce((s, b) => s + b.total_amount, 0)}`,
+      `Total: ₹${todayTotalRevenue}`,
+      `Walk-in Bills: ₹${todayBillRevenue} (${todayBills.length} bills)`,
+      `Subscriptions: ₹${todaySubRevenue}`,
+      ``,
+      `Walk-in Payment Breakdown:`,
+      `- Cash: ₹${todayBills.filter(b => b.payment_mode === "cash").reduce((s, b) => s + b.total_amount, 0)}`,
+      `- UPI: ₹${todayBills.filter(b => b.payment_mode === "upi").reduce((s, b) => s + b.total_amount, 0)}`,
+      `- Scan & Pay: ₹${todayBills.filter(b => b.payment_mode === "scanpay").reduce((s, b) => s + b.total_amount, 0)}`,
     ];
     openWhatsAppShare(lines.join("\n"));
   };
@@ -322,8 +382,10 @@ export default function Dashboard() {
                 <div className="text-sm font-medium opacity-90 flex items-center gap-2">
                   <IndianRupee className="w-4 h-4" /> Today
                 </div>
-                <div className="text-2xl font-black mt-1">₹{todayRevenue}</div>
-                <div className="text-xs opacity-90 mt-1">{todayBills.length} bills</div>
+                <div className="text-2xl font-black mt-1">₹{todayTotalRevenue}</div>
+                <div className="text-xs opacity-90 mt-1">
+                  Bills: ₹{todayBillRevenue} | Subs: ₹{todaySubRevenue}
+                </div>
               </CardContent>
             </Card>
             <Card className="border-border shadow-sm">
@@ -331,22 +393,39 @@ export default function Dashboard() {
                 <div className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                   <TrendingUp className="w-4 h-4" /> This Week
                 </div>
-                <div className="text-2xl font-black mt-1 text-foreground">₹{weekRevenue}</div>
-                <div className="text-xs text-muted-foreground mt-1">{weekBills.length} bills</div>
+                <div className="text-2xl font-black mt-1 text-foreground">₹{weekTotalRevenue}</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Bills: ₹{weekBillRevenue} | Subs: ₹{weekSubRevenue}
+                </div>
               </CardContent>
             </Card>
             <Card className="border-border shadow-sm col-span-2">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <ReceiptText className="w-4 h-4" /> This Month
+              <CardContent className="p-4 flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                      <ReceiptText className="w-4 h-4" /> This Month
+                    </div>
+                    <div className="text-3xl font-black mt-1 text-primary">₹{monthTotalRevenue}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Bills: ₹{monthBillRevenue} | Subs: ₹{monthSubRevenue}
+                    </div>
                   </div>
-                  <div className="text-3xl font-black mt-1 text-primary">₹{monthRevenue}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{monthBills.length} bills</div>
+                  <Button variant="outline" className="rounded-full shrink-0" onClick={shareToday}>
+                    <Share2 className="w-4 h-4 mr-2" /> Share Today
+                  </Button>
                 </div>
-                <Button variant="outline" className="rounded-full" onClick={shareToday}>
-                  <Share2 className="w-4 h-4 mr-2" /> Share Today
-                </Button>
+
+                <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
+                  <div className="bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/50 p-2.5 rounded-xl text-center">
+                    <div className="text-[10px] text-muted-foreground font-semibold uppercase">Monthly Expenses</div>
+                    <div className="text-lg font-black text-amber-700 dark:text-amber-500 mt-0.5">₹{monthExpenses}</div>
+                  </div>
+                  <div className="bg-green-50/50 dark:bg-green-950/10 border border-green-200/50 p-2.5 rounded-xl text-center">
+                    <div className="text-[10px] text-muted-foreground font-semibold uppercase">Actual Net Earning</div>
+                    <div className="text-lg font-black text-green-700 dark:text-green-500 mt-0.5">₹{monthActualEarning}</div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
