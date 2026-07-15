@@ -149,10 +149,9 @@ export default function Dashboard() {
     return rangeTotalRevenue - rangeExpenses;
   }, [rangeTotalRevenue, rangeExpenses]);
 
-  // Custom range item quantity sold statistics
+  // Custom range item quantity sold statistics (walk-in/preorder billing records only, excluding subscription packs)
   const itemQuantityStats = useMemo(() => {
-    const rangeCounts: { [name: string]: number } = {};
-    const overallCounts: { [name: string]: number } = {};
+    const counts: { [name: string]: { name: string; totalQty: number } } = {};
 
     const getMultiplier = (name: string, option: string): number => {
       const nameLower = name.toLowerCase();
@@ -186,16 +185,54 @@ export default function Dashboard() {
       return 1;
     };
 
-    // 1. Process Range Bills
+    // Process Range Bills
     rangeBills.forEach(b => {
       b.items.forEach(item => {
         const mult = getMultiplier(item.name, item.option);
         const qty = item.qty * mult;
-        rangeCounts[item.name] = (rangeCounts[item.name] || 0) + qty;
+        if (!counts[item.name]) {
+          counts[item.name] = { name: item.name, totalQty: 0 };
+        }
+        counts[item.name].totalQty += qty;
       });
     });
 
-    // 2. Process Overall Bills (all bills in the database)
+    return Object.values(counts).sort((a, b) => b.totalQty - a.totalQty);
+  }, [rangeBills]);
+
+  // Overall average daily sales statistics (considering active period and weekdays) for Top Selling Items card
+  const topSellingItemsStats = useMemo(() => {
+    const overallCounts: { [name: string]: number } = {};
+
+    const getMultiplier = (name: string, option: string): number => {
+      const nameLower = name.toLowerCase();
+      const optionLower = (option || "").toLowerCase();
+
+      if (optionLower.includes("3 pieces") || optionLower === "3") {
+        return 3;
+      }
+      if (optionLower.includes("2 pieces") || optionLower === "2") {
+        return 2;
+      }
+      if (optionLower.includes("1 piece") || optionLower === "1") {
+        return 1;
+      }
+
+      if (optionLower.includes("butter") && (nameLower.includes("thepla") || nameLower.includes("masala paratha"))) {
+        return 0;
+      }
+
+      if (nameLower.includes("aloo paratha") || nameLower.includes("sev paratha")) {
+        return 1;
+      }
+
+      if (nameLower.includes("thepla")) return 3;
+      if (nameLower.includes("paratha")) return 2;
+      
+      return 1;
+    };
+
+    // Process Overall Bills (all bills in the database)
     bills.forEach(b => {
       b.items.forEach(item => {
         const mult = getMultiplier(item.name, item.option);
@@ -204,7 +241,6 @@ export default function Dashboard() {
       });
     });
 
-    // Compute overall average daily sales from creation to today
     const today = getISTISODate();
 
     const countOfferedDays = (startDateStr: string, endDateStr: string, category?: string, weekDays?: number[]): number => {
@@ -213,13 +249,11 @@ export default function Dashboard() {
       
       if (start > end) return 1;
 
-      // For daily items or items without specific weekdays, count all calendar days
       if (category !== "week_special" || !weekDays || weekDays.length === 0) {
         const diffMs = end.getTime() - start.getTime();
         return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
       }
 
-      // For weekday specials, count only the days they are offered
       let count = 0;
       const current = new Date(start);
       while (current <= end) {
@@ -234,30 +268,21 @@ export default function Dashboard() {
 
     const stats = Object.keys(overallCounts).map(name => {
       const menuItem = menuItems.find(mi => mi.name.toLowerCase() === name.toLowerCase());
-      
-      // Default creation date to 2026-02-01 if not found
       const itemCreatedDate = menuItem?.created_at ? menuItem.created_at.split('T')[0] : '2026-02-01';
-      
-      // Calculate total offered days from itemCreatedDate to today
       const activeDays = countOfferedDays(itemCreatedDate, today, menuItem?.category, menuItem?.week_days);
-
       const totalOverallQty = overallCounts[name];
-      const rangeQty = rangeCounts[name] || 0;
       const averageSales = totalOverallQty / activeDays;
 
       return {
         name,
-        rangeQty,
         totalOverallQty,
         activeDays,
-        averageSales,
-        itemCreatedDate
+        averageSales
       };
     });
 
-    // Sort by overall average daily sales descending
     return stats.sort((a, b) => b.averageSales - a.averageSales);
-  }, [bills, rangeBills, menuItems]);
+  }, [bills, menuItems]);
 
   const pendingAdvance = bills.filter(b => b.advance_status === 'pending').reduce((s, b) => s + (b.advance_balance || 0), 0);
   const pendingOutstanding = bills.filter(b => b.outstanding_status === 'pending').reduce((s, b) => s + (b.outstanding_balance || 0), 0);
@@ -588,13 +613,13 @@ export default function Dashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-1 flex flex-col gap-3">
-              {itemQuantityStats.length === 0 ? (
+              {topSellingItemsStats.length === 0 ? (
                 <div className="text-center py-4 text-xs text-muted-foreground italic">
                   No sales data available.
                 </div>
               ) : (
                 <div className="grid grid-cols-3 gap-2.5">
-                  {itemQuantityStats.slice(0, 3).map((stat, idx) => {
+                  {topSellingItemsStats.slice(0, 3).map((stat, idx) => {
                     const medalColors = [
                       "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60", // Gold
                       "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-800/60", // Silver
@@ -678,7 +703,7 @@ export default function Dashboard() {
                 <Layers className="w-4 h-4 text-primary" /> Sales Quantity
               </CardTitle>
               <CardDescription className="text-xs">
-                Overall average daily sales since creation (or Feb 2026). Adjust date range to filter the selected period sold count below.
+                Total item count sold in selected period (including pieces multiplier for Thepla/Paratha).
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-0">
@@ -689,24 +714,20 @@ export default function Dashboard() {
               ) : (
                 <div className="space-y-4 mt-2">
                   {itemQuantityStats.map(stat => {
-                    const maxAverage = itemQuantityStats[0]?.averageSales || 1;
-                    const percent = Math.min(100, Math.max(5, (stat.averageSales / maxAverage) * 100));
+                    const maxQty = itemQuantityStats[0]?.totalQty || 1;
+                    const percent = Math.min(100, Math.max(5, (stat.totalQty / maxQty) * 100));
                     
                     return (
                       <div key={stat.name} className="space-y-1">
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-sm text-foreground">{stat.name}</span>
-                          <span className="font-black text-sm text-primary">{stat.averageSales.toFixed(2)} / day</span>
+                          <span className="font-black text-sm text-primary">{stat.totalQty} qty</span>
                         </div>
                         <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
                           <div 
                             className="h-full bg-primary rounded-full transition-all duration-500" 
                             style={{ width: `${percent}%` }}
                           />
-                        </div>
-                        <div className="flex justify-between text-[10px] text-muted-foreground">
-                          <span>Total sold: {stat.rangeQty} qty (selected)</span>
-                          <span>Overall: {stat.totalOverallQty} qty over {stat.activeDays} days</span>
                         </div>
                       </div>
                     );
