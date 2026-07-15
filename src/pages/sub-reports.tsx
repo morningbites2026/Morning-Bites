@@ -228,38 +228,6 @@ export default function SubReports() {
     });
   }, [logs, revenueFromDate, revenueToDate, getISTDate]);
 
-  const groupedServedSalads = useMemo(() => {
-    const groups: { [date: string]: Array<{ name: string; customerName: string; qty: number }> } = {};
-
-    rangeServedSalads.forEach(log => {
-      const logDate = getISTDate(log.created_at);
-      const customer = customers.find(c => c.id === log.customer_id);
-      const customerName = customer ? customer.name : "Unknown Customer";
-      const saladName = getSaladNameForLog(log);
-      
-      let qty = 1;
-      if (log.meta && typeof log.meta.qty === 'number') {
-        qty = log.meta.qty;
-      } else {
-        const match = log.description.match(/^(\d+)\s+meals\s+used/i);
-        if (match) {
-          qty = parseInt(match[1]);
-        }
-      }
-
-      if (!groups[logDate]) {
-        groups[logDate] = [];
-      }
-      groups[logDate].push({ name: saladName, customerName, qty });
-    });
-
-    return Object.entries(groups)
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([date, items]) => ({
-        date,
-        items
-      }));
-  }, [rangeServedSalads, customers, getSaladNameForLog, getISTDate]);
 
   const packageServedTotals = useMemo(() => {
     const totals: { [name: string]: number } = {};
@@ -562,58 +530,24 @@ export default function SubReports() {
                     <span>Served Salad Details ({rangeServedSalads.length})</span>
                     {saladDetailsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   </button>
-                  
-                  {saladDetailsExpanded && (
+                         {saladDetailsExpanded && (
                     loadingLogs ? (
                       <div className="text-center p-4 text-muted-foreground text-xs italic">
                         Loading served salads...
                       </div>
-                    ) : groupedServedSalads.length === 0 ? (
+                    ) : packageServedTotals.length === 0 ? (
                       <div className="text-center p-4 text-muted-foreground text-xs italic">
                         No salads served in this period.
                       </div>
                     ) : (
                       <div className="space-y-4 mt-1.5 animate-in slide-in-from-top-1 duration-200">
-                        {/* Package-wise Summary */}
-                        {packageServedTotals.length > 0 && (
-                          <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-2">
-                            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                              Package-wise Summary
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              {packageServedTotals.map(total => (
-                                <div key={total.name} className="bg-white dark:bg-card border border-border p-2 rounded-lg flex justify-between items-center text-xs shadow-sm">
-                                  <span className="font-semibold text-foreground truncate mr-2">{total.name}</span>
-                                  <Badge className="font-bold shrink-0 text-[10px] h-5 bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
-                                    {total.total} served
-                                  </Badge>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Date-wise Details */}
-                        <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                          {groupedServedSalads.map(group => (
-                            <div key={group.date} className="space-y-1">
-                              <div className="text-[10px] font-bold text-primary uppercase tracking-wider flex items-center gap-1 mt-1.5">
-                                <Calendar className="w-3 h-3 text-primary" />
-                                {new Date(group.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                              </div>
-                              <div className="divide-y divide-border border border-border rounded-xl bg-white dark:bg-card">
-                                {group.items.map((item, idx) => (
-                                  <div key={idx} className="p-2.5 flex justify-between items-center text-xs">
-                                    <div>
-                                      <span className="font-semibold text-foreground">{item.name}</span>
-                                      <span className="text-muted-foreground text-[10px] ml-1.5">to {item.customerName}</span>
-                                    </div>
-                                    <Badge variant="secondary" className="text-[10px] h-5 font-bold">
-                                      {item.qty} {item.qty === 1 ? 'salad' : 'salads'}
-                                    </Badge>
-                                  </div>
-                                ))}
-                              </div>
+                        <div className="divide-y divide-border border border-border rounded-xl bg-white dark:bg-card">
+                          {packageServedTotals.map(total => (
+                            <div key={total.name} className="p-2.5 flex justify-between items-center text-xs">
+                              <span className="font-semibold text-foreground">{total.name}</span>
+                              <Badge variant="secondary" className="text-[10px] h-5 font-bold">
+                                {total.total} {total.total === 1 ? 'salad' : 'salads'}
+                              </Badge>
                             </div>
                           ))}
                         </div>
