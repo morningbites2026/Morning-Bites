@@ -151,7 +151,8 @@ export default function Dashboard() {
 
   // Custom range item quantity sold statistics
   const itemQuantityStats = useMemo(() => {
-    const counts: { [name: string]: { name: string; billingQty: number; totalQty: number } } = {};
+    const rangeCounts: { [name: string]: number } = {};
+    const overallCounts: { [name: string]: number } = {};
 
     const getMultiplier = (name: string, option: string): number => {
       const nameLower = name.toLowerCase();
@@ -185,54 +186,59 @@ export default function Dashboard() {
       return 1;
     };
 
-    // From Walk-in / Preorder Bills
+    // 1. Process Range Bills
     rangeBills.forEach(b => {
       b.items.forEach(item => {
         const mult = getMultiplier(item.name, item.option);
         const qty = item.qty * mult;
-        if (!counts[item.name]) {
-          counts[item.name] = { name: item.name, billingQty: 0, totalQty: 0 };
-        }
-        counts[item.name].billingQty += qty;
-        counts[item.name].totalQty += qty;
+        rangeCounts[item.name] = (rangeCounts[item.name] || 0) + qty;
       });
     });
 
-    // Compute average daily sales based on active period
-    const today = getISTISODate();
-    const startRangeStr = fromDate || '2026-02-01';
-    const endRangeStr = toDate || today;
+    // 2. Process Overall Bills (all bills in the database)
+    bills.forEach(b => {
+      b.items.forEach(item => {
+        const mult = getMultiplier(item.name, item.option);
+        const qty = item.qty * mult;
+        overallCounts[item.name] = (overallCounts[item.name] || 0) + qty;
+      });
+    });
 
-    const stats = Object.values(counts).map(c => {
-      const menuItem = menuItems.find(mi => mi.name.toLowerCase() === c.name.toLowerCase());
+    // Compute overall average daily sales from creation to today
+    const today = getISTISODate();
+
+    const stats = Object.keys(overallCounts).map(name => {
+      const menuItem = menuItems.find(mi => mi.name.toLowerCase() === name.toLowerCase());
       
       // Default creation date to 2026-02-01 if not found
       const itemCreatedDate = menuItem?.created_at ? menuItem.created_at.split('T')[0] : '2026-02-01';
       
-      const activeStartDateStr = itemCreatedDate > startRangeStr ? itemCreatedDate : startRangeStr;
-      const activeEndDateStr = endRangeStr;
-
+      // Calculate total active days from itemCreatedDate to today
       let activeDays = 1;
-      if (activeStartDateStr <= activeEndDateStr) {
-        const d1 = new Date(activeStartDateStr + "T00:00:00");
-        const d2 = new Date(activeEndDateStr + "T23:59:59");
+      if (itemCreatedDate <= today) {
+        const d1 = new Date(itemCreatedDate + "T00:00:00");
+        const d2 = new Date(today + "T23:59:59");
         const diffMs = d2.getTime() - d1.getTime();
         activeDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
       }
 
-      const averageSales = c.totalQty / activeDays;
+      const totalOverallQty = overallCounts[name];
+      const rangeQty = rangeCounts[name] || 0;
+      const averageSales = totalOverallQty / activeDays;
 
       return {
-        ...c,
+        name,
+        rangeQty,
+        totalOverallQty,
         activeDays,
         averageSales,
         itemCreatedDate
       };
     });
 
-    // Sort by average daily sales descending
+    // Sort by overall average daily sales descending
     return stats.sort((a, b) => b.averageSales - a.averageSales);
-  }, [rangeBills, menuItems, fromDate, toDate]);
+  }, [bills, rangeBills, menuItems]);
 
   const pendingAdvance = bills.filter(b => b.advance_status === 'pending').reduce((s, b) => s + (b.advance_balance || 0), 0);
   const pendingOutstanding = bills.filter(b => b.outstanding_status === 'pending').reduce((s, b) => s + (b.outstanding_balance || 0), 0);
@@ -559,7 +565,7 @@ export default function Dashboard() {
                 <TrendingUp className="w-4 h-4" /> Top Selling Items (Avg. Daily)
               </CardTitle>
               <CardDescription className="text-[10px]">
-                Top 3 items based on average daily sales in the selected period (adjusted for active periods).
+                Top 3 items based on overall average daily sales from creation to today.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-1 flex flex-col gap-3">
@@ -595,7 +601,7 @@ export default function Dashboard() {
                           {stat.averageSales.toFixed(1)} <span className="text-[9px] font-normal text-muted-foreground">/day</span>
                         </div>
                         <div className="text-[9px] text-muted-foreground font-semibold">
-                          {stat.totalQty} total · {stat.activeDays}d
+                          {stat.totalOverallQty} total · {stat.activeDays}d
                         </div>
                       </div>
                     );
@@ -653,7 +659,7 @@ export default function Dashboard() {
                 <Layers className="w-4 h-4 text-primary" /> Sales Quantity
               </CardTitle>
               <CardDescription className="text-xs">
-                Total item count sold in selected period (including pieces multiplier for Thepla/Paratha).
+                Overall average daily sales since creation (or Feb 2026). Adjust date range to filter the selected period sold count below.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-0">
@@ -680,8 +686,8 @@ export default function Dashboard() {
                           />
                         </div>
                         <div className="flex justify-between text-[10px] text-muted-foreground">
-                          <span>Total sold: {stat.totalQty} qty</span>
-                          <span>Active days: {stat.activeDays} days</span>
+                          <span>Total sold: {stat.rangeQty} qty (selected)</span>
+                          <span>Overall: {stat.totalOverallQty} qty over {stat.activeDays} days</span>
                         </div>
                       </div>
                     );
