@@ -207,20 +207,39 @@ export default function Dashboard() {
     // Compute overall average daily sales from creation to today
     const today = getISTISODate();
 
+    const countOfferedDays = (startDateStr: string, endDateStr: string, category?: string, weekDays?: number[]): number => {
+      const start = new Date(startDateStr + "T00:00:00");
+      const end = new Date(endDateStr + "T23:59:59");
+      
+      if (start > end) return 1;
+
+      // For daily items or items without specific weekdays, count all calendar days
+      if (category !== "week_special" || !weekDays || weekDays.length === 0) {
+        const diffMs = end.getTime() - start.getTime();
+        return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+      }
+
+      // For weekday specials, count only the days they are offered
+      let count = 0;
+      const current = new Date(start);
+      while (current <= end) {
+        const dayOfWeek = current.getDay();
+        if (weekDays.includes(dayOfWeek)) {
+          count++;
+        }
+        current.setDate(current.getDate() + 1);
+      }
+      return Math.max(1, count);
+    };
+
     const stats = Object.keys(overallCounts).map(name => {
       const menuItem = menuItems.find(mi => mi.name.toLowerCase() === name.toLowerCase());
       
       // Default creation date to 2026-02-01 if not found
       const itemCreatedDate = menuItem?.created_at ? menuItem.created_at.split('T')[0] : '2026-02-01';
       
-      // Calculate total active days from itemCreatedDate to today
-      let activeDays = 1;
-      if (itemCreatedDate <= today) {
-        const d1 = new Date(itemCreatedDate + "T00:00:00");
-        const d2 = new Date(today + "T23:59:59");
-        const diffMs = d2.getTime() - d1.getTime();
-        activeDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-      }
+      // Calculate total offered days from itemCreatedDate to today
+      const activeDays = countOfferedDays(itemCreatedDate, today, menuItem?.category, menuItem?.week_days);
 
       const totalOverallQty = overallCounts[name];
       const rangeQty = rangeCounts[name] || 0;
