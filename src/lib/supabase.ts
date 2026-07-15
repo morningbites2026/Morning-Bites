@@ -238,17 +238,36 @@ export interface Expense {
 
 export async function dbGet<T>(table: string, query?: string): Promise<T[]> {
   ensureSupabaseEnv();
-  const url = `${supabaseUrl}/rest/v1/${table}?${query || 'select=*'}&order=created_at.desc`;
-  const r = await fetch(url, {
-    headers: {
-      apikey: supabaseKey,
-      Authorization: `Bearer ${supabaseKey}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  const text = await r.text();
-  if (!r.ok) throw new Error(text);
-  return JSON.parse(text);
+  let allData: T[] = [];
+  const limit = 1000;
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const pageParams = `limit=${limit}&offset=${offset}`;
+    const baseQuery = query ? `${query}${query.includes('limit=') ? '' : `&limit=${limit}&offset=${offset}`}` : pageParams;
+    const url = `${supabaseUrl}/rest/v1/${table}?${baseQuery}${baseQuery.includes('order=') ? '' : '&order=created_at.desc'}`;
+    
+    const r = await fetch(url, {
+      headers: {
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const text = await r.text();
+    if (!r.ok) throw new Error(text);
+    const data = JSON.parse(text) as T[];
+    allData = allData.concat(data);
+    
+    if (data.length < limit || (query && query.includes('limit='))) {
+      hasMore = false;
+    } else {
+      offset += limit;
+    }
+  }
+
+  return allData;
 }
 
 export async function dbIns<T>(table: string, data: Partial<T>): Promise<T[]> {
