@@ -288,16 +288,20 @@ export default function SubReports() {
   const newlySub = activeSubs.filter(c => c.renew_count === 0);
   const renewCustomers = activeSubs.filter(c => c.renew_count > 0);
 
-  const totalMealsServed = (() => {
-    let total = customerPackages.reduce((s, cp) => s + cp.used, 0);
-    customers.forEach(c => {
-      const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
-      if (!hasCp && !c.is_deleted) {
-        total += c.used + (c.renew_count * c.total);
+  const totalMealsServed = useMemo(() => {
+    return logs.reduce((sum, log) => {
+      let qty = 1;
+      if (log.meta && typeof log.meta.qty === 'number') {
+        qty = log.meta.qty;
+      } else {
+        const match = log.description.match(/^(\d+)\s+meals\s+used/i);
+        if (match) {
+          qty = parseInt(match[1]);
+        }
       }
-    });
-    return total;
-  })();
+      return sum + qty;
+    }, 0);
+  }, [logs]);
 
   const numPackages = packages.filter(p => p.is_active).length;
 
