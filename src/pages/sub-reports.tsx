@@ -175,7 +175,9 @@ export default function SubReports() {
 
   const getISTDate = useCallback((isoStr: string) => {
     try {
-      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(isoStr));
+      let s = isoStr.trim().replace(' ', 'T');
+      if (!/Z|[+-]\d{2}(:\d{2})?$/.test(s)) s += 'Z';
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(s));
     } catch {
       return isoStr.split('T')[0];
     }
@@ -258,6 +260,26 @@ export default function SubReports() {
         items
       }));
   }, [rangeServedSalads, customers, getSaladNameForLog, getISTDate]);
+
+  const packageServedTotals = useMemo(() => {
+    const totals: { [name: string]: number } = {};
+    rangeServedSalads.forEach(log => {
+      const saladName = getSaladNameForLog(log);
+      let qty = 1;
+      if (log.meta && typeof log.meta.qty === 'number') {
+        qty = log.meta.qty;
+      } else {
+        const match = log.description.match(/^(\d+)\s+meals\s+used/i);
+        if (match) {
+          qty = parseInt(match[1]);
+        }
+      }
+      totals[saladName] = (totals[saladName] || 0) + qty;
+    });
+    return Object.entries(totals)
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [rangeServedSalads, getSaladNameForLog]);
 
   const activeSubs = customers.filter(c => c.status === 'active' && !c.is_deleted);
   const activePacks = activeSubs.filter(c => c.used < c.total);
@@ -551,28 +573,50 @@ export default function SubReports() {
                         No salads served in this period.
                       </div>
                     ) : (
-                      <div className="space-y-3 max-h-60 overflow-y-auto pr-1 mt-1.5 animate-in slide-in-from-top-1 duration-200">
-                        {groupedServedSalads.map(group => (
-                          <div key={group.date} className="space-y-1">
-                            <div className="text-[10px] font-bold text-primary uppercase tracking-wider flex items-center gap-1 mt-1.5">
-                              <Calendar className="w-3 h-3 text-primary" />
-                              {new Date(group.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      <div className="space-y-4 mt-1.5 animate-in slide-in-from-top-1 duration-200">
+                        {/* Package-wise Summary */}
+                        {packageServedTotals.length > 0 && (
+                          <div className="p-3 bg-muted/40 border border-border rounded-xl space-y-2">
+                            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                              Package-wise Summary
                             </div>
-                            <div className="divide-y divide-border border border-border rounded-xl bg-white dark:bg-card">
-                              {group.items.map((item, idx) => (
-                                <div key={idx} className="p-2.5 flex justify-between items-center text-xs">
-                                  <div>
-                                    <span className="font-semibold text-foreground">{item.name}</span>
-                                    <span className="text-muted-foreground text-[10px] ml-1.5">to {item.customerName}</span>
-                                  </div>
-                                  <Badge variant="secondary" className="text-[10px] h-5 font-bold">
-                                    {item.qty} {item.qty === 1 ? 'salad' : 'salads'}
+                            <div className="grid grid-cols-2 gap-2">
+                              {packageServedTotals.map(total => (
+                                <div key={total.name} className="bg-white dark:bg-card border border-border p-2 rounded-lg flex justify-between items-center text-xs shadow-sm">
+                                  <span className="font-semibold text-foreground truncate mr-2">{total.name}</span>
+                                  <Badge className="font-bold shrink-0 text-[10px] h-5 bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
+                                    {total.total} served
                                   </Badge>
                                 </div>
                               ))}
                             </div>
                           </div>
-                        ))}
+                        )}
+
+                        {/* Date-wise Details */}
+                        <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                          {groupedServedSalads.map(group => (
+                            <div key={group.date} className="space-y-1">
+                              <div className="text-[10px] font-bold text-primary uppercase tracking-wider flex items-center gap-1 mt-1.5">
+                                <Calendar className="w-3 h-3 text-primary" />
+                                {new Date(group.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </div>
+                              <div className="divide-y divide-border border border-border rounded-xl bg-white dark:bg-card">
+                                {group.items.map((item, idx) => (
+                                  <div key={idx} className="p-2.5 flex justify-between items-center text-xs">
+                                    <div>
+                                      <span className="font-semibold text-foreground">{item.name}</span>
+                                      <span className="text-muted-foreground text-[10px] ml-1.5">to {item.customerName}</span>
+                                    </div>
+                                    <Badge variant="secondary" className="text-[10px] h-5 font-bold">
+                                      {item.qty} {item.qty === 1 ? 'salad' : 'salads'}
+                                    </Badge>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )
                   )}
