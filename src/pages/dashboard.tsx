@@ -153,17 +153,42 @@ export default function Dashboard() {
   const itemQuantityStats = useMemo(() => {
     const counts: { [name: string]: { name: string; billingQty: number; totalQty: number } } = {};
 
-    const getMultiplier = (name: string): number => {
-      const lower = name.toLowerCase();
-      if (lower.includes("thepla")) return 3;
-      if (lower.includes("paratha")) return 3;
+    const getMultiplier = (name: string, option: string): number => {
+      const nameLower = name.toLowerCase();
+      const optionLower = (option || "").toLowerCase();
+
+      // 1. Check if option has explicit piece count
+      if (optionLower.includes("3 pieces") || optionLower === "3") {
+        return 3;
+      }
+      if (optionLower.includes("2 pieces") || optionLower === "2") {
+        return 2;
+      }
+      if (optionLower.includes("1 piece") || optionLower === "1") {
+        return 1;
+      }
+
+      // 2. If it is an add-on for Thepla or Masala Paratha (price is ₹5, name is Butter or Butter add on)
+      if (optionLower.includes("butter") && (nameLower.includes("thepla") || nameLower.includes("masala paratha"))) {
+        return 0;
+      }
+
+      // 3. Main portion variants for Aloo Paratha or Sev Paratha (Oil / Butter)
+      if (nameLower.includes("aloo paratha") || nameLower.includes("sev paratha")) {
+        return 1;
+      }
+
+      // 4. Default fallbacks if no option matches
+      if (nameLower.includes("thepla")) return 3;
+      if (nameLower.includes("paratha")) return 2; // Default for Masala Paratha is 2 pieces
+      
       return 1;
     };
 
     // From Walk-in / Preorder Bills
     rangeBills.forEach(b => {
       b.items.forEach(item => {
-        const mult = getMultiplier(item.name);
+        const mult = getMultiplier(item.name, item.option);
         const qty = item.qty * mult;
         if (!counts[item.name]) {
           counts[item.name] = { name: item.name, billingQty: 0, totalQty: 0 };
