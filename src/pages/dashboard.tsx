@@ -350,11 +350,40 @@ export default function Dashboard() {
   );
 
   const shareToday = () => {
+    // 1. Calculate today's item-wise sales quantity
+    const todayCounts: { [name: string]: number } = {};
+    
+    const getMultiplier = (name: string, option: string): number => {
+      const nameLower = name.toLowerCase();
+      const optionLower = (option || "").toLowerCase();
+
+      if (optionLower.includes("3 pieces") || optionLower === "3") return 3;
+      if (optionLower.includes("2 pieces") || optionLower === "2") return 2;
+      if (optionLower.includes("1 piece") || optionLower === "1") return 1;
+      if (optionLower.includes("butter") && (nameLower.includes("thepla") || nameLower.includes("masala paratha"))) return 0;
+      if (nameLower.includes("aloo paratha") || nameLower.includes("sev paratha")) return 1;
+      if (nameLower.includes("thepla")) return 3;
+      if (nameLower.includes("paratha")) return 2;
+      return 1;
+    };
+
+    todayBills.forEach(b => {
+      b.items.forEach(item => {
+        const mult = getMultiplier(item.name, item.option);
+        const qty = item.qty * mult;
+        todayCounts[item.name] = (todayCounts[item.name] || 0) + qty;
+      });
+    });
+
+    const quantityLines = Object.entries(todayCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, qty]) => `- ${name}: ${qty} qty`);
+
     const lines = [
       `Morning Bites – Earnings`,
       ``,
       `Today (${todayStr})`,
-      `Total: ₹${todayTotalRevenue}`,
+      `Total Earnings: ₹${todayTotalRevenue}`,
       `Walk-in Bills: ₹${todayBillRevenue} (${todayBills.length} bills)`,
       `Subscriptions: ₹${todaySubRevenue}`,
       ``,
@@ -363,6 +392,15 @@ export default function Dashboard() {
       `- UPI: ₹${todayBills.filter(b => b.payment_mode === "upi").reduce((s, b) => s + b.total_amount, 0)}`,
       `- Scan & Pay: ₹${todayBills.filter(b => b.payment_mode === "scanpay").reduce((s, b) => s + b.total_amount, 0)}`,
     ];
+
+    if (quantityLines.length > 0) {
+      lines.push(
+        ``,
+        `Today's Sales Quantities:`,
+        ...quantityLines
+      );
+    }
+
     openWhatsAppShare(lines.join("\n"));
   };
 
@@ -526,7 +564,7 @@ export default function Dashboard() {
         <TabsContent value="earnings" className="mt-4 space-y-4">
           {/* Date range filter fields */}
           <Card className="border border-border shadow-sm">
-            <CardContent className="p-3.5 flex flex-row items-center gap-3">
+            <CardContent className="p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1 space-y-1">
                 <Label className="text-[10px] text-muted-foreground font-semibold uppercase">From Date</Label>
                 <Input
@@ -602,6 +640,21 @@ export default function Dashboard() {
             </Card>
           </div>
 
+          <div className="col-span-2 grid grid-cols-2 gap-3 mt-1">
+            <Card className="border-green-200 bg-green-50 shadow-sm">
+              <CardContent className="p-4">
+                <div className="text-xs font-bold text-green-700 uppercase tracking-wider">Customer Credit</div>
+                <div className="text-xl font-black text-green-800 mt-1">₹{pendingAdvance}</div>
+              </CardContent>
+            </Card>
+            <Card className="border-red-200 bg-red-50 shadow-sm">
+              <CardContent className="p-4">
+                <div className="text-xs font-bold text-red-700 uppercase tracking-wider">Pending Amount</div>
+                <div className="text-xl font-black text-red-800 mt-1">₹{pendingOutstanding}</div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Top Selling Items (Average Sales) */}
           <Card className="border border-border shadow-sm col-span-2">
             <CardHeader className="p-4 pb-2">
@@ -654,28 +707,13 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
-
-          <div className="col-span-2 grid grid-cols-2 gap-3 mt-1">
-            <Card className="border-green-200 bg-green-50 shadow-sm">
-              <CardContent className="p-4">
-                <div className="text-xs font-bold text-green-700 uppercase tracking-wider">Customer Credit</div>
-                <div className="text-xl font-black text-green-800 mt-1">₹{pendingAdvance}</div>
-              </CardContent>
-            </Card>
-            <Card className="border-red-200 bg-red-50 shadow-sm">
-              <CardContent className="p-4">
-                <div className="text-xs font-bold text-red-700 uppercase tracking-wider">Pending Amount</div>
-                <div className="text-xl font-black text-red-800 mt-1">₹{pendingOutstanding}</div>
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
 
         {/* ─── Quantity Stats ─── */}
         <TabsContent value="quantity" className="mt-4 space-y-4">
           {/* Date range filter fields */}
           <Card className="border border-border shadow-sm">
-            <CardContent className="p-3.5 flex flex-row items-center gap-3">
+            <CardContent className="p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1 space-y-1">
                 <Label className="text-[10px] text-muted-foreground font-semibold uppercase">From Date</Label>
                 <Input
@@ -742,7 +780,7 @@ export default function Dashboard() {
         <TabsContent value="history" className="mt-4 space-y-4">
           <Card className="border-border shadow-sm">
             <CardContent className="p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">From</Label>
                   <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="h-9 text-sm" />

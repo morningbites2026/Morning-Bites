@@ -202,6 +202,7 @@ export default function Billing() {
         setExpandedGroup(null);
         setShowQrModal(false);
         refresh();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });

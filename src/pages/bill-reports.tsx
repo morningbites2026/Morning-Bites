@@ -121,26 +121,30 @@ export default function BillReports() {
             <TabsTrigger value="all" className="rounded-lg text-xs">All Time</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="flex items-center gap-2">
-          <CalendarDays className="w-4 h-4 text-muted-foreground" />
-          <Input
-            type="date"
-            value={fromDate}
-            onChange={e => { setFromDate(e.target.value); setPeriod("custom"); }}
-            className="h-9 text-sm flex-1"
-          />
-          <span className="text-muted-foreground">to</span>
-          <Input
-            type="date"
-            value={toDate}
-            onChange={e => { setToDate(e.target.value); setPeriod("custom"); }}
-            className="h-9 text-sm flex-1"
-          />
-          {(fromDate || toDate) && (
-            <Button variant="ghost" size="sm" className="h-9 px-2 text-xs" onClick={() => { setFromDate(""); setToDate(""); setPeriod("all"); }}>
-              Clear
-            </Button>
-          )}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+            <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+            <Input
+              type="date"
+              value={fromDate}
+              onChange={e => { setFromDate(e.target.value); setPeriod("custom"); }}
+              className="h-9 text-sm flex-1 sm:w-40"
+            />
+          </div>
+          <span className="text-muted-foreground self-center sm:self-auto text-xs sm:text-sm">to</span>
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+            <Input
+              type="date"
+              value={toDate}
+              onChange={e => { setToDate(e.target.value); setPeriod("custom"); }}
+              className="h-9 text-sm flex-1 sm:w-40"
+            />
+            {(fromDate || toDate) && (
+              <Button variant="ghost" size="sm" className="h-9 px-2 text-xs shrink-0" onClick={() => { setFromDate(""); setToDate(""); setPeriod("all"); }}>
+                Clear
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -493,7 +493,7 @@ export default function SubReports() {
                 <Label className="text-xs font-semibold flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-primary" /> Custom Date Range
                 </Label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1">
                     <Label className="text-[9px] text-muted-foreground">From</Label>
                     <Input
