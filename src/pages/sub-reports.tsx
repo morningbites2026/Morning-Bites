@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -6,7 +6,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TrendingUp, Package, Users, UserPlus, RefreshCw, CheckCircle2, Utensils, CalendarCheck, DollarSign, Calendar } from "lucide-react";
+import { TrendingUp, Package, Users, UserPlus, RefreshCw, CheckCircle2, Utensils, CalendarCheck, DollarSign, Calendar, ChevronDown, ChevronUp } from "lucide-react";
+import { dbGet, ActivityLog } from "@/lib/supabase";
 
 function getISTTomorrowISO(): string {
   const d = new Date();
@@ -16,6 +17,11 @@ function getISTTomorrowISO(): string {
 
 export default function SubReports() {
   const { customers, packages, customerPackages, mealSkips } = useStore();
+
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [subDetailsExpanded, setSubDetailsExpanded] = useState(false);
+  const [saladDetailsExpanded, setSaladDetailsExpanded] = useState(false);
 
   // Date states for custom revenue range
   const todayISO = useMemo(() => {
@@ -147,6 +153,111 @@ export default function SubReports() {
 
     return list;
   }, [customerPackages, customers, packages, revenueFromDate, revenueToDate]);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingLogs(true);
+    dbGet<ActivityLog>('activity_logs', 'action=eq.meal_used')
+      .then(fetchedLogs => {
+        if (active) {
+          setLogs(fetchedLogs);
+          setLoadingLogs(false);
+        }
+      })
+      .catch(err => {
+        console.error("Failed to fetch activity logs:", err);
+        if (active) setLoadingLogs(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const getISTDate = useCallback((isoStr: string) => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(isoStr));
+    } catch {
+      return isoStr.split('T')[0];
+    }
+  }, []);
+
+  const getSaladNameForLog = useCallback((log: ActivityLog) => {
+    if (log.meta && log.meta.package_name) {
+      return log.meta.package_name;
+    }
+    const match = log.description.match(/(.+) used\. Now \d+\/\d+/);
+    if (match) {
+      const candidate = match[1].trim();
+      const cleanCandidate = candidate.replace(/^\d+\s+/, '').trim();
+      if (cleanCandidate !== "Meal" && !cleanCandidate.endsWith("meals")) {
+        return cleanCandidate;
+      }
+    }
+    if (log.customer_id) {
+      const custCps = customerPackages.filter(cp => Number(cp.customer_id) === log.customer_id);
+      const cust = customers.find(c => c.id === log.customer_id);
+      const logDate = getISTDate(log.created_at);
+
+      if (custCps.length === 1) {
+        const pkg = packages.find(p => p.id === custCps[0].package_id);
+        if (pkg) return pkg.name;
+      } else if (custCps.length > 1) {
+        const potentialCps = custCps
+          .filter(cp => cp.pack_start_date <= logDate)
+          .sort((a, b) => b.pack_start_date.localeCompare(a.pack_start_date));
+        if (potentialCps.length > 0) {
+          const pkg = packages.find(p => p.id === potentialCps[0].package_id);
+          if (pkg) return pkg.name;
+        }
+      }
+      if (cust && cust.package_id) {
+        const pkg = packages.find(p => p.id === cust.package_id);
+        if (pkg) return pkg.name;
+      }
+    }
+    return "Standard Salad";
+  }, [customerPackages, customers, packages, getISTDate]);
+
+  const rangeServedSalads = useMemo(() => {
+    return logs.filter(log => {
+      if (log.action !== 'meal_used') return false;
+      const logDate = getISTDate(log.created_at);
+      return logDate >= revenueFromDate && logDate <= revenueToDate;
+    });
+  }, [logs, revenueFromDate, revenueToDate, getISTDate]);
+
+  const groupedServedSalads = useMemo(() => {
+    const groups: { [date: string]: Array<{ name: string; customerName: string; qty: number }> } = {};
+
+    rangeServedSalads.forEach(log => {
+      const logDate = getISTDate(log.created_at);
+      const customer = customers.find(c => c.id === log.customer_id);
+      const customerName = customer ? customer.name : "Unknown Customer";
+      const saladName = getSaladNameForLog(log);
+      
+      let qty = 1;
+      if (log.meta && typeof log.meta.qty === 'number') {
+        qty = log.meta.qty;
+      } else {
+        const match = log.description.match(/^(\d+)\s+meals\s+used/i);
+        if (match) {
+          qty = parseInt(match[1]);
+        }
+      }
+
+      if (!groups[logDate]) {
+        groups[logDate] = [];
+      }
+      groups[logDate].push({ name: saladName, customerName, qty });
+    });
+
+    return Object.entries(groups)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([date, items]) => ({
+        date,
+        items
+      }));
+  }, [rangeServedSalads, customers, getSaladNameForLog, getISTDate]);
 
   const activeSubs = customers.filter(c => c.status === 'active' && !c.is_deleted);
   const activePacks = activeSubs.filter(c => c.used < c.total);
@@ -380,31 +491,92 @@ export default function SubReports() {
                   </div>
                 </div>
 
-                {customSubDetails.length > 0 && (
-                  <div className="mt-3 pt-2 space-y-1.5">
-                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                      Subscriber Details ({customSubDetails.length})
-                    </div>
-                    <div className="divide-y divide-border border border-border rounded-xl max-h-48 overflow-y-auto bg-muted/10 bg-white dark:bg-card">
-                      {customSubDetails.map((sub, i) => (
-                        <div key={i} className="p-2.5 flex justify-between items-center text-xs">
-                          <div>
-                            <div className="font-semibold text-foreground flex items-center gap-1.5">
-                              {sub.name}
-                              <Badge variant="outline" className={sub.isRenew ? "text-[9px] h-4 bg-blue-50 text-blue-700 border-blue-200" : "text-[9px] h-4 bg-green-50 text-green-700 border-green-200"}>
-                                {sub.isRenew ? "Renewal" : "New"}
-                              </Badge>
+                {/* Collapsible Subscriber Details */}
+                <div className="mt-3 pt-2 space-y-1.5 border-t border-border/40">
+                  <button
+                    type="button"
+                    onClick={() => setSubDetailsExpanded(!subDetailsExpanded)}
+                    className="w-full flex items-center justify-between py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+                  >
+                    <span>Subscriber Details ({customSubDetails.length})</span>
+                    {subDetailsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                  
+                  {subDetailsExpanded && (
+                    customSubDetails.length === 0 ? (
+                      <div className="text-center p-4 text-muted-foreground text-xs italic">
+                        No subscriber details found.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-border border border-border rounded-xl max-h-48 overflow-y-auto bg-muted/10 bg-white dark:bg-card mt-1.5 animate-in slide-in-from-top-1 duration-200">
+                        {customSubDetails.map((sub, i) => (
+                          <div key={i} className="p-2.5 flex justify-between items-center text-xs">
+                            <div>
+                              <div className="font-semibold text-foreground flex items-center gap-1.5">
+                                {sub.name}
+                                <Badge variant="outline" className={sub.isRenew ? "text-[9px] h-4 bg-blue-50 text-blue-700 border-blue-200" : "text-[9px] h-4 bg-green-50 text-green-700 border-green-200"}>
+                                  {sub.isRenew ? "Renewal" : "New"}
+                                </Badge>
+                              </div>
+                              <div className="text-[10px] text-muted-foreground mt-0.5">
+                                {sub.pkgName} · {sub.date}
+                              </div>
                             </div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5">
-                              {sub.pkgName} · {sub.date}
+                            <div className="font-bold text-foreground">₹{sub.price}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  )}
+                </div>
+
+                {/* Collapsible Served Salad Details */}
+                <div className="mt-4 pt-2 space-y-1.5 border-t border-border/40">
+                  <button
+                    type="button"
+                    onClick={() => setSaladDetailsExpanded(!saladDetailsExpanded)}
+                    className="w-full flex items-center justify-between py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+                  >
+                    <span>Served Salad Details ({rangeServedSalads.length})</span>
+                    {saladDetailsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                  
+                  {saladDetailsExpanded && (
+                    loadingLogs ? (
+                      <div className="text-center p-4 text-muted-foreground text-xs italic">
+                        Loading served salads...
+                      </div>
+                    ) : groupedServedSalads.length === 0 ? (
+                      <div className="text-center p-4 text-muted-foreground text-xs italic">
+                        No salads served in this period.
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-60 overflow-y-auto pr-1 mt-1.5 animate-in slide-in-from-top-1 duration-200">
+                        {groupedServedSalads.map(group => (
+                          <div key={group.date} className="space-y-1">
+                            <div className="text-[10px] font-bold text-primary uppercase tracking-wider flex items-center gap-1 mt-1.5">
+                              <Calendar className="w-3 h-3 text-primary" />
+                              {new Date(group.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </div>
+                            <div className="divide-y divide-border border border-border rounded-xl bg-white dark:bg-card">
+                              {group.items.map((item, idx) => (
+                                <div key={idx} className="p-2.5 flex justify-between items-center text-xs">
+                                  <div>
+                                    <span className="font-semibold text-foreground">{item.name}</span>
+                                    <span className="text-muted-foreground text-[10px] ml-1.5">to {item.customerName}</span>
+                                  </div>
+                                  <Badge variant="secondary" className="text-[10px] h-5 font-bold">
+                                    {item.qty} {item.qty === 1 ? 'salad' : 'salads'}
+                                  </Badge>
+                                </div>
+                              ))}
                             </div>
                           </div>
-                          <div className="font-bold text-foreground">₹{sub.price}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                        ))}
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

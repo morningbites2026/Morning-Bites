@@ -151,7 +151,7 @@ export default function Dashboard() {
 
   // Custom range item quantity sold statistics
   const itemQuantityStats = useMemo(() => {
-    const counts: { [name: string]: { name: string; billingQty: number; subQty: number; totalQty: number } } = {};
+    const counts: { [name: string]: { name: string; billingQty: number; totalQty: number } } = {};
 
     const getMultiplier = (name: string): number => {
       const lower = name.toLowerCase();
@@ -160,50 +160,21 @@ export default function Dashboard() {
       return 1;
     };
 
-    // 1. From Walk-in / Preorder Bills
+    // From Walk-in / Preorder Bills
     rangeBills.forEach(b => {
       b.items.forEach(item => {
         const mult = getMultiplier(item.name);
         const qty = item.qty * mult;
         if (!counts[item.name]) {
-          counts[item.name] = { name: item.name, billingQty: 0, subQty: 0, totalQty: 0 };
+          counts[item.name] = { name: item.name, billingQty: 0, totalQty: 0 };
         }
         counts[item.name].billingQty += qty;
         counts[item.name].totalQty += qty;
       });
     });
 
-    // 2. From Subscriptions
-    const rangeSubPacks = customerPackages ? customerPackages.filter(cp => {
-      return cp.status !== 'cancelled' && cp.pack_start_date >= (fromDate || '1970-01-01') && cp.pack_start_date <= (toDate || '9999-12-31');
-    }) : [];
-
-    rangeSubPacks.forEach(cp => {
-      const pkg = packages.find(p => p.id === cp.package_id);
-      if (!pkg) return;
-      
-      const matchedMenuItem = menuItems.find(mi => {
-        const pkgLower = pkg.name.toLowerCase();
-        const miLower = mi.name.toLowerCase();
-        if (pkgLower.includes(miLower) || miLower.includes(pkgLower)) return true;
-        const pkgWords = pkgLower.split(/\s+/).filter(w => w.length > 2);
-        const miWords = miLower.split(/\s+/).filter(w => w.length > 2);
-        return pkgWords.some(pw => miWords.includes(pw));
-      });
-      const itemName = matchedMenuItem ? matchedMenuItem.name : pkg.name;
-
-      const mult = getMultiplier(itemName);
-      const qty = cp.total * mult;
-
-      if (!counts[itemName]) {
-        counts[itemName] = { name: itemName, billingQty: 0, subQty: 0, totalQty: 0 };
-      }
-      counts[itemName].subQty += qty;
-      counts[itemName].totalQty += qty;
-    });
-
     return Object.values(counts).sort((a, b) => b.totalQty - a.totalQty);
-  }, [rangeBills, customerPackages, packages, menuItems, fromDate, toDate]);
+  }, [rangeBills]);
 
   const pendingAdvance = bills.filter(b => b.advance_status === 'pending').reduce((s, b) => s + (b.advance_balance || 0), 0);
   const pendingOutstanding = bills.filter(b => b.outstanding_status === 'pending').reduce((s, b) => s + (b.outstanding_balance || 0), 0);
@@ -596,10 +567,6 @@ export default function Dashboard() {
                             className="h-full bg-primary rounded-full transition-all duration-500" 
                             style={{ width: `${percent}%` }}
                           />
-                        </div>
-                        <div className="flex justify-between text-[10px] text-muted-foreground">
-                          <span>Billing: {stat.billingQty} qty</span>
-                          <span>Subscriptions: {stat.subQty} qty</span>
                         </div>
                       </div>
                     );

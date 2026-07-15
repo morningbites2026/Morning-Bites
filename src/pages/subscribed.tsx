@@ -333,9 +333,15 @@ export default function Subscribed() {
       } else {
         await dbUpd('customers', c.id, { used: c.used + qty });
       }
-      const newUsed = currentUsed + qty;
-      await logActivity(c.id, 'meal_used', `${qty > 1 ? qty + ' meals' : 'Meal'} used. Now ${newUsed}/${currentTotal}`);
       const pkg = packages.find(p => p.id === (cp ? cp.package_id : c.package_id));
+      const newUsed = currentUsed + qty;
+      const saladName = pkg?.name || 'Meal';
+      await logActivity(
+        c.id,
+        'meal_used',
+        `${qty > 1 ? qty + ' ' + saladName + 's' : saladName} used. Now ${newUsed}/${currentTotal}`,
+        { package_name: pkg?.name, package_id: cp ? cp.package_id : c.package_id, qty }
+      );
       refresh();
       setMealUsedModal({ open: true, customer: c, used: newUsed, total: currentTotal, pkgName: pkg?.name || '', qty });
       setUseMealQty(p => ({ ...p, [c.id]: 1 }));
