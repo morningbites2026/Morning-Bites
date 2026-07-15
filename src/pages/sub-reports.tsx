@@ -45,21 +45,42 @@ export default function SubReports() {
   const weeklyStartISO = useMemo(() => getISTDateOffsetISO(-7), []);
   const monthlyStartISO = useMemo(() => getISTDateOffsetISO(-30), []);
 
+  const normalizeToISO = useCallback((dateStr: string): string => {
+    if (!dateStr) return '';
+    const trimmed = dateStr.trim();
+    if (trimmed.includes('-')) {
+      return trimmed.split('T')[0];
+    }
+    const parts = trimmed.split('/');
+    if (parts.length === 3) {
+      const day = parts[0].padStart(2, '0');
+      const month = parts[1].padStart(2, '0');
+      const year = parts[2];
+      return `${year}-${month}-${day}`;
+    }
+    return trimmed;
+  }, []);
+
   const getSubRevenueForRange = useCallback((startISO: string, endISO: string) => {
     // 1. Calculate revenue from customerPackages
-    let revenue = customerPackages
-      .filter(cp => cp.status !== 'cancelled' && cp.pack_start_date >= startISO && cp.pack_start_date <= endISO)
-      .reduce((sum, cp) => {
-        const pkg = packages.find(p => p.id === cp.package_id);
-        return sum + (pkg?.price || 0);
-      }, 0);
+    let revenue = 0;
+    customerPackages.forEach(cp => {
+      if (cp.status !== 'cancelled' && cp.pack_start_date) {
+        const parsedDate = normalizeToISO(cp.pack_start_date);
+        if (parsedDate >= startISO && parsedDate <= endISO) {
+          const pkg = packages.find(p => p.id === cp.package_id);
+          revenue += (pkg?.price || 0);
+        }
+      }
+    });
 
     // 2. Add revenue from legacy customer packages (if customer has no customerPackages entries)
     customers.forEach(c => {
       if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
         const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
         if (!hasCp) {
-          if (c.pack_start_date >= startISO && c.pack_start_date <= endISO) {
+          const parsedDate = normalizeToISO(c.pack_start_date);
+          if (parsedDate >= startISO && parsedDate <= endISO) {
             const pkg = packages.find(p => p.id === c.package_id);
             revenue += (pkg?.price || 0);
           }
@@ -68,29 +89,33 @@ export default function SubReports() {
     });
 
     return revenue;
-  }, [customerPackages, packages, customers]);
+  }, [customerPackages, packages, customers, normalizeToISO]);
 
   const getSubCountsForRange = useCallback((startISO: string, endISO: string) => {
     let newCount = 0;
     let renewCount = 0;
 
     // 1. Calculate counts from customerPackages
-    customerPackages
-      .filter(cp => cp.status !== 'cancelled' && cp.pack_start_date >= startISO && cp.pack_start_date <= endISO)
-      .forEach(cp => {
-        if (cp.renew_count === 0) {
-          newCount++;
-        } else {
-          renewCount++;
+    customerPackages.forEach(cp => {
+      if (cp.status !== 'cancelled' && cp.pack_start_date) {
+        const parsedDate = normalizeToISO(cp.pack_start_date);
+        if (parsedDate >= startISO && parsedDate <= endISO) {
+          if (cp.renew_count === 0) {
+            newCount++;
+          } else {
+            renewCount++;
+          }
         }
-      });
+      }
+    });
 
     // 2. Add counts from legacy customer packages (if customer has no customerPackages entries)
     customers.forEach(c => {
       if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
         const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
         if (!hasCp) {
-          if (c.pack_start_date >= startISO && c.pack_start_date <= endISO) {
+          const parsedDate = normalizeToISO(c.pack_start_date);
+          if (parsedDate >= startISO && parsedDate <= endISO) {
             if (c.renew_count === 0) {
               newCount++;
             } else {
@@ -102,7 +127,7 @@ export default function SubReports() {
     });
 
     return { newCount, renewCount };
-  }, [customerPackages, customers]);
+  }, [customerPackages, customers, normalizeToISO]);
 
   const weeklyRevenue = useMemo(() => getSubRevenueForRange(weeklyStartISO, todayISO), [weeklyStartISO, todayISO, getSubRevenueForRange]);
   const monthlyRevenue = useMemo(() => getSubRevenueForRange(monthlyStartISO, todayISO), [monthlyStartISO, todayISO, getSubRevenueForRange]);
@@ -115,28 +140,32 @@ export default function SubReports() {
   const customSubDetails = useMemo(() => {
     const list: Array<{ name: string; phone: string; pkgName: string; price: number; date: string; isRenew: boolean }> = [];
     
-    customerPackages
-      .filter(cp => cp.status !== 'cancelled' && cp.pack_start_date >= revenueFromDate && cp.pack_start_date <= revenueToDate)
-      .forEach(cp => {
-        const cust = customers.find(c => c.id === Number(cp.customer_id));
-        const pkg = packages.find(p => p.id === cp.package_id);
-        if (cust) {
-          list.push({
-            name: cust.name,
-            phone: cust.phone,
-            pkgName: pkg?.name || "Unknown Package",
-            price: pkg?.price || 0,
-            date: cp.pack_start_date,
-            isRenew: cp.renew_count > 0
-          });
+    customerPackages.forEach(cp => {
+      if (cp.status !== 'cancelled' && cp.pack_start_date) {
+        const parsedDate = normalizeToISO(cp.pack_start_date);
+        if (parsedDate >= revenueFromDate && parsedDate <= revenueToDate) {
+          const cust = customers.find(c => c.id === Number(cp.customer_id));
+          const pkg = packages.find(p => p.id === cp.package_id);
+          if (cust) {
+            list.push({
+              name: cust.name,
+              phone: cust.phone,
+              pkgName: pkg?.name || "Unknown Package",
+              price: pkg?.price || 0,
+              date: cp.pack_start_date,
+              isRenew: cp.renew_count > 0
+            });
+          }
         }
-      });
+      }
+    });
 
     customers.forEach(c => {
       if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
         const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
         if (!hasCp) {
-          if (c.pack_start_date >= revenueFromDate && c.pack_start_date <= revenueToDate) {
+          const parsedDate = normalizeToISO(c.pack_start_date);
+          if (parsedDate >= revenueFromDate && parsedDate <= revenueToDate) {
             const pkg = packages.find(p => p.id === c.package_id);
             list.push({
               name: c.name,
@@ -152,7 +181,7 @@ export default function SubReports() {
     });
 
     return list;
-  }, [customerPackages, customers, packages, revenueFromDate, revenueToDate]);
+  }, [customerPackages, customers, packages, revenueFromDate, revenueToDate, normalizeToISO]);
 
   useEffect(() => {
     let active = true;
@@ -177,10 +206,15 @@ export default function SubReports() {
     try {
       let s = isoStr.trim().replace(' ', 'T');
       if (!/Z|[+-]\d{2}(:\d{2})?$/.test(s)) s += 'Z';
-      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(s));
-    } catch {
-      return isoStr.split('T')[0];
-    }
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+      }
+    } catch {}
+    // Safe fallback if parsing fails: extract YYYY-MM-DD
+    const match = isoStr.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    return isoStr.split('T')[0].split(' ')[0];
   }, []);
 
   const getSaladNameForLog = useCallback((log: ActivityLog) => {
@@ -205,8 +239,8 @@ export default function SubReports() {
         if (pkg) return pkg.name;
       } else if (custCps.length > 1) {
         const potentialCps = custCps
-          .filter(cp => cp.pack_start_date <= logDate)
-          .sort((a, b) => b.pack_start_date.localeCompare(a.pack_start_date));
+          .filter(cp => normalizeToISO(cp.pack_start_date) <= logDate)
+          .sort((a, b) => normalizeToISO(b.pack_start_date).localeCompare(normalizeToISO(a.pack_start_date)));
         if (potentialCps.length > 0) {
           const pkg = packages.find(p => p.id === potentialCps[0].package_id);
           if (pkg) return pkg.name;
@@ -218,7 +252,7 @@ export default function SubReports() {
       }
     }
     return "Standard Salad";
-  }, [customerPackages, customers, packages, getISTDate]);
+  }, [customerPackages, customers, packages, getISTDate, normalizeToISO]);
 
   const rangeServedSalads = useMemo(() => {
     return logs.filter(log => {
@@ -255,10 +289,14 @@ export default function SubReports() {
   const renewCustomers = activeSubs.filter(c => c.renew_count > 0);
 
   const totalMealsServed = (() => {
-    if (customerPackages.length > 0) {
-      return customerPackages.reduce((s, cp) => s + cp.used, 0);
-    }
-    return customers.filter(c => !c.is_deleted).reduce((s, c) => s + c.used, 0);
+    let total = customerPackages.reduce((s, cp) => s + cp.used, 0);
+    customers.forEach(c => {
+      const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
+      if (!hasCp && !c.is_deleted) {
+        total += c.used;
+      }
+    });
+    return total;
   })();
 
   const numPackages = packages.filter(p => p.is_active).length;
