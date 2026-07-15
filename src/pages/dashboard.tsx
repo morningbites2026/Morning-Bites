@@ -198,8 +198,41 @@ export default function Dashboard() {
       });
     });
 
-    return Object.values(counts).sort((a, b) => b.totalQty - a.totalQty);
-  }, [rangeBills]);
+    // Compute average daily sales based on active period
+    const today = getISTISODate();
+    const startRangeStr = fromDate || '2026-02-01';
+    const endRangeStr = toDate || today;
+
+    const stats = Object.values(counts).map(c => {
+      const menuItem = menuItems.find(mi => mi.name.toLowerCase() === c.name.toLowerCase());
+      
+      // Default creation date to 2026-02-01 if not found
+      const itemCreatedDate = menuItem?.created_at ? menuItem.created_at.split('T')[0] : '2026-02-01';
+      
+      const activeStartDateStr = itemCreatedDate > startRangeStr ? itemCreatedDate : startRangeStr;
+      const activeEndDateStr = endRangeStr;
+
+      let activeDays = 1;
+      if (activeStartDateStr <= activeEndDateStr) {
+        const d1 = new Date(activeStartDateStr + "T00:00:00");
+        const d2 = new Date(activeEndDateStr + "T23:59:59");
+        const diffMs = d2.getTime() - d1.getTime();
+        activeDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+      }
+
+      const averageSales = c.totalQty / activeDays;
+
+      return {
+        ...c,
+        activeDays,
+        averageSales,
+        itemCreatedDate
+      };
+    });
+
+    // Sort by average daily sales descending
+    return stats.sort((a, b) => b.averageSales - a.averageSales);
+  }, [rangeBills, menuItems, fromDate, toDate]);
 
   const pendingAdvance = bills.filter(b => b.advance_status === 'pending').reduce((s, b) => s + (b.advance_balance || 0), 0);
   const pendingOutstanding = bills.filter(b => b.outstanding_status === 'pending').reduce((s, b) => s + (b.outstanding_balance || 0), 0);
@@ -519,6 +552,59 @@ export default function Dashboard() {
             </Card>
           </div>
 
+          {/* Top Selling Items (Average Sales) */}
+          <Card className="border border-border shadow-sm col-span-2">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-600 dark:text-amber-500">
+                <TrendingUp className="w-4 h-4" /> Top Selling Items (Avg. Daily)
+              </CardTitle>
+              <CardDescription className="text-[10px]">
+                Top 3 items based on average daily sales in the selected period (adjusted for active periods).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-1 flex flex-col gap-3">
+              {itemQuantityStats.length === 0 ? (
+                <div className="text-center py-4 text-xs text-muted-foreground italic">
+                  No sales data available.
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2.5">
+                  {itemQuantityStats.slice(0, 3).map((stat, idx) => {
+                    const medalColors = [
+                      "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60", // Gold
+                      "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-800/60", // Silver
+                      "bg-amber-50/80 text-amber-700 border-amber-200 dark:bg-orange-950/20 dark:text-orange-400 dark:border-orange-900/40", // Bronze
+                    ];
+                    const medalLabel = ["1st", "2nd", "3rd"];
+                    
+                    return (
+                      <div 
+                        key={stat.name} 
+                        className={cn(
+                          "p-3 rounded-xl border flex flex-col items-center text-center gap-1.5 shadow-sm bg-gradient-to-b from-card to-muted/10",
+                          idx === 0 ? "border-amber-200/60" : "border-border"
+                        )}
+                      >
+                        <span className={cn("text-[9px] font-black px-2 py-0.5 rounded-full border uppercase tracking-wider", medalColors[idx])}>
+                          {medalLabel[idx]}
+                        </span>
+                        <div className="font-extrabold text-xs truncate max-w-full text-foreground mt-1">
+                          {stat.name}
+                        </div>
+                        <div className="font-black text-sm text-primary">
+                          {stat.averageSales.toFixed(1)} <span className="text-[9px] font-normal text-muted-foreground">/day</span>
+                        </div>
+                        <div className="text-[9px] text-muted-foreground font-semibold">
+                          {stat.totalQty} total · {stat.activeDays}d
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="col-span-2 grid grid-cols-2 gap-3 mt-1">
             <Card className="border-green-200 bg-green-50 shadow-sm">
               <CardContent className="p-4">
@@ -578,20 +664,24 @@ export default function Dashboard() {
               ) : (
                 <div className="space-y-4 mt-2">
                   {itemQuantityStats.map(stat => {
-                    const maxQty = itemQuantityStats[0]?.totalQty || 1;
-                    const percent = Math.min(100, Math.max(5, (stat.totalQty / maxQty) * 100));
+                    const maxAverage = itemQuantityStats[0]?.averageSales || 1;
+                    const percent = Math.min(100, Math.max(5, (stat.averageSales / maxAverage) * 100));
                     
                     return (
                       <div key={stat.name} className="space-y-1">
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-sm text-foreground">{stat.name}</span>
-                          <span className="font-black text-sm text-primary">{stat.totalQty} qty</span>
+                          <span className="font-black text-sm text-primary">{stat.averageSales.toFixed(2)} / day</span>
                         </div>
                         <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
                           <div 
                             className="h-full bg-primary rounded-full transition-all duration-500" 
                             style={{ width: `${percent}%` }}
                           />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground">
+                          <span>Total sold: {stat.totalQty} qty</span>
+                          <span>Active days: {stat.activeDays} days</span>
                         </div>
                       </div>
                     );
