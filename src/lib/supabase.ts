@@ -76,7 +76,7 @@ export interface Customer {
   renew_count: number;
   last_renewed: string | null;
   pack_start_date: string;
-  status: 'active' | 'cancelled';
+  status: 'active' | 'cancelled' | 'hold';
   is_deleted: boolean;
   preferred_days: number[];
   package_id: number | null;
@@ -164,7 +164,7 @@ export interface CustomerPackage {
   total: number;
   pack_start_date: string;
   payment_mode: 'cash' | 'upi' | 'scanpay';
-  status: 'active' | 'done' | 'cancelled';
+  status: 'active' | 'done' | 'cancelled' | 'hold';
   renew_count: number;
   last_renewed: string | null;
   preferred_days: number[]; // DB migration required: ALTER TABLE customer_packages ADD COLUMN preferred_days JSONB DEFAULT '[]';

@@ -174,7 +174,7 @@ export default function SubscriberDetail() {
       <Card className="border border-border shadow-sm overflow-hidden bg-gradient-to-br from-card to-muted/20">
         <div className={cn(
           "h-2 w-full",
-          customer.status === 'cancelled' ? 'bg-orange-400' : 'bg-primary'
+          customer.status === 'cancelled' ? 'bg-orange-400' : customer.status === 'hold' ? 'bg-amber-400 animate-pulse' : 'bg-primary'
         )} />
         <CardContent className="p-6">
           <div className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
@@ -215,6 +215,8 @@ export default function SubscriberDetail() {
                 <div className="mt-1">
                   {customer.status === 'cancelled' ? (
                     <Badge variant="destructive" className="font-bold">Cancelled</Badge>
+                  ) : customer.status === 'hold' ? (
+                    <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold animate-pulse">On Hold</Badge>
                   ) : (
                     <Badge className="bg-green-500 hover:bg-green-600 text-white font-bold">Active</Badge>
                   )}
@@ -311,6 +313,8 @@ export default function SubscriberDetail() {
                                 <Badge className="bg-secondary text-secondary-foreground font-bold hover:bg-secondary">Low: {cp.total - cp.used} left</Badge>
                               ) : cp.status === 'active' ? (
                                 <Badge className="bg-primary/10 text-primary border-primary/20 font-bold hover:bg-primary/10">{cp.total - cp.used} left</Badge>
+                              ) : cp.status === 'hold' ? (
+                                <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold animate-pulse">On Hold</Badge>
                               ) : cp.status === 'cancelled' ? (
                                 <Badge variant="destructive" className="font-bold">Cancelled</Badge>
                               ) : (

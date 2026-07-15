@@ -89,7 +89,7 @@ export default function Dashboard() {
     // 2. Legacy customers fallback
     if (customers && customers.length > 0) {
       customers.forEach(c => {
-        if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
+        if ((c.status === 'active' || c.status === 'hold') && !c.is_deleted && c.package_id && c.pack_start_date) {
           const hasCp = customerPackages ? customerPackages.some(cp => Number(cp.customer_id) === c.id) : false;
           if (!hasCp) {
             const parsedStartDate = billDateToISO(c.pack_start_date);

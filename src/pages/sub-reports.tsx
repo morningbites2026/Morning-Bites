@@ -76,7 +76,7 @@ export default function SubReports() {
 
     // 2. Add revenue from legacy customer packages (if customer has no customerPackages entries)
     customers.forEach(c => {
-      if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
+      if ((c.status === 'active' || c.status === 'hold') && !c.is_deleted && c.package_id && c.pack_start_date) {
         const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
         if (!hasCp) {
           const parsedDate = normalizeToISO(c.pack_start_date);
@@ -111,7 +111,7 @@ export default function SubReports() {
 
     // 2. Add counts from legacy customer packages (if customer has no customerPackages entries)
     customers.forEach(c => {
-      if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
+      if ((c.status === 'active' || c.status === 'hold') && !c.is_deleted && c.package_id && c.pack_start_date) {
         const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
         if (!hasCp) {
           const parsedDate = normalizeToISO(c.pack_start_date);
@@ -161,7 +161,7 @@ export default function SubReports() {
     });
 
     customers.forEach(c => {
-      if (c.status === 'active' && !c.is_deleted && c.package_id && c.pack_start_date) {
+      if ((c.status === 'active' || c.status === 'hold') && !c.is_deleted && c.package_id && c.pack_start_date) {
         const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
         if (!hasCp) {
           const parsedDate = normalizeToISO(c.pack_start_date);
@@ -283,7 +283,7 @@ export default function SubReports() {
       .sort((a, b) => b.total - a.total);
   }, [rangeServedSalads, getSaladNameForLog]);
 
-  const activeSubs = customers.filter(c => c.status === 'active' && !c.is_deleted);
+  const activeSubs = customers.filter(c => (c.status === 'active' || c.status === 'hold') && !c.is_deleted);
   const activePacks = activeSubs.filter(c => c.used < c.total);
   const newlySub = activeSubs.filter(c => c.renew_count === 0);
   const renewCustomers = activeSubs.filter(c => c.renew_count > 0);
@@ -383,7 +383,7 @@ export default function SubReports() {
           const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
           return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
         });
-      } else if (c.package_id && c.used < c.total) {
+      } else if (c.package_id && c.used < c.total && c.status === 'active') {
         // Legacy fallback
         const effectivePrefDays = c.preferred_days || [];
         isScheduledForAnyPack = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
@@ -419,7 +419,7 @@ export default function SubReports() {
         }
 
         // Legacy fallback
-        if (c.package_id === pkg.id && c.used < c.total) {
+        if (c.package_id === pkg.id && c.used < c.total && c.status === 'active') {
           const effectivePrefDays = c.preferred_days || [];
           return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
         }

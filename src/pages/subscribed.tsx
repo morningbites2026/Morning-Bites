@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Check, Undo2, SkipForward, RefreshCw, Trash2, Edit, MessageCircle, ChevronLeft, ChevronRight, History, Plus, Banknote, CreditCard, QrCode, Ban, AlertCircle } from "lucide-react";
+import { Check, Undo2, SkipForward, RefreshCw, Trash2, Edit, MessageCircle, ChevronLeft, ChevronRight, History, Plus, Banknote, CreditCard, QrCode, Ban, AlertCircle, Pause, Play } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
@@ -179,11 +179,11 @@ export default function Subscribed() {
   const filteredSubs = activeSubs.filter(c => {
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase()) && !c.phone.includes(searchQuery)) return false;
     const { used, total } = getDisplayData(c);
-    if (filter === "active") return c.status === 'active' && used < total;
-    if (filter === "low") return c.status === 'active' && (total - used) <= 2 && used < total;
-    if (filter === "done") return c.status === 'active' && used >= total;
-    if (filter === "new") return c.status === 'active' && c.renew_count === 0;
-    if (filter === "renewed") return c.status === 'active' && c.renew_count > 0;
+    if (filter === "active") return (c.status === 'active' || c.status === 'hold') && used < total;
+    if (filter === "low") return (c.status === 'active' || c.status === 'hold') && (total - used) <= 2 && used < total;
+    if (filter === "done") return (c.status === 'active' || c.status === 'hold') && used >= total;
+    if (filter === "new") return (c.status === 'active' || c.status === 'hold') && c.renew_count === 0;
+    if (filter === "renewed") return (c.status === 'active' || c.status === 'hold') && c.renew_count > 0;
     return true;
   });
 
@@ -442,6 +442,39 @@ export default function Subscribed() {
       } catch (err: any) {
         toast({ variant: "destructive", description: err.message });
       }
+    }
+  };
+
+  // ─── Hold / Unhold ─────────────────────────────────────────────────────────
+  const handleToggleHold = async (c: any, cp: CustomerPackage | null) => {
+    try {
+      const isHold = cp ? cp.status === 'hold' : c.status === 'hold';
+      const newStatus = isHold ? 'active' : 'hold';
+      
+      const pkgId = cp ? cp.package_id : c.package_id;
+      const pkg = packages.find(p => p.id === pkgId);
+      const pkgName = pkg?.name || "Salad";
+
+      if (cp) {
+        await dbUpd('customer_packages', cp.id, { status: newStatus });
+      } else {
+        await dbUpd('customers', c.id, { status: newStatus });
+      }
+
+      await logActivity(
+        c.id,
+        newStatus === 'hold' ? 'hold_package' : 'unhold_package',
+        `Package "${pkgName}" ${newStatus === 'hold' ? 'put on hold' : 'activated/unheld'}`
+      );
+
+      toast({
+        title: newStatus === 'hold' ? "Package put on hold" : "Package activated",
+        description: `"${pkgName}" for ${c.name} is now ${newStatus === 'hold' ? 'on hold' : 'active'}.`
+      });
+
+      refresh();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: err.message });
     }
   };
 
@@ -728,6 +761,7 @@ export default function Subscribed() {
           filteredSubs.map(c => {
             const custPacks = getCustPacks(c.id);
             const { cp, used, total, packageId } = getDisplayData(c);
+            const isCpOnHold = (cp ? cp.status : c.status) === 'hold';
             const pkg = packages.find(p => p.id === packageId);
             const isDone = used >= total;
             const isLow = (total - used) <= 2 && !isDone;
@@ -786,6 +820,8 @@ export default function Subscribed() {
                       {/* Meals left badge */}
                       {c.status === 'cancelled' ? (
                         <Badge variant="destructive" className="font-bold">Cancelled</Badge>
+                      ) : (cp ? cp.status : c.status) === 'hold' ? (
+                        <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold animate-pulse">On Hold</Badge>
                       ) : isDone ? (
                         <Badge className="bg-gray-200 text-gray-700 font-bold">Pack Done</Badge>
                       ) : isLow ? (
@@ -908,7 +944,7 @@ export default function Subscribed() {
                           const finalQty = isNaN(qty) || qty < 1 ? 1 : qty;
                           handleUseMeal(c, cp, finalQty);
                         }}
-                        disabled={isDone || c.status === 'cancelled'}
+                        disabled={isDone || c.status === 'cancelled' || isCpOnHold}
                         className="flex-1 h-14 rounded-xl shadow-md font-bold text-lg"
                       >
                         <Check className="w-5 h-5 mr-2" /> Mark Used
@@ -916,7 +952,7 @@ export default function Subscribed() {
                       <Button
                         variant="outline"
                         onClick={() => handleUndo(c, cp)}
-                        disabled={used === 0 || c.status === 'cancelled'}
+                        disabled={used === 0 || c.status === 'cancelled' || isCpOnHold}
                         className="w-14 h-14 rounded-xl border-border bg-card hover:bg-muted"
                       >
                         <Undo2 className="w-5 h-5" />
@@ -926,7 +962,7 @@ export default function Subscribed() {
                     {isDone && (
                       <Button
                         onClick={() => handleRenew(c, cp)}
-                        disabled={c.status === 'cancelled'}
+                        disabled={c.status === 'cancelled' || isCpOnHold}
                         className="w-full h-10 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/90 font-bold"
                       >
                         <RefreshCw className="w-4 h-4 mr-1.5" /> Renew
@@ -946,7 +982,7 @@ export default function Subscribed() {
                       <Button
                         variant="outline"
                         onClick={() => setNotifyModal({ open: true, customer: c, type: isDone ? 'done' : isLow ? 'low' : 'meal', cp })}
-                        disabled={c.status === 'cancelled'}
+                        disabled={c.status === 'cancelled' || isCpOnHold}
                         className="w-10 h-10 rounded-lg p-0 border-primary/20 text-primary hover:bg-primary/5"
                         title="Notify"
                       >
@@ -956,7 +992,7 @@ export default function Subscribed() {
                       <Button
                         variant="outline"
                         onClick={() => { setSkipModal({ open: true, customer: c, cp }); setSkipDate(getISTISODate()); }}
-                        disabled={isDone || c.status === 'cancelled'}
+                        disabled={isDone || c.status === 'cancelled' || isCpOnHold}
                         className="w-10 h-10 rounded-lg p-0 border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100"
                         title="Skip Meal"
                       >
@@ -970,6 +1006,22 @@ export default function Subscribed() {
                       <Button variant="outline" className="w-10 h-10 rounded-lg p-0" onClick={() => openEdit(c)} title="Edit">
                         <Edit className="w-4 h-4" />
                       </Button>
+
+                      {c.status !== 'cancelled' && (
+                        <Button
+                          variant="outline"
+                          onClick={() => handleToggleHold(c, cp)}
+                          className={cn(
+                            "w-10 h-10 rounded-lg p-0",
+                            isCpOnHold
+                              ? "border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100 dark:border-amber-900/50 dark:text-amber-300 dark:bg-amber-950/40"
+                              : "border-border text-muted-foreground hover:text-foreground"
+                          )}
+                          title={isCpOnHold ? "Unhold Package" : "Hold Package"}
+                        >
+                          {isCpOnHold ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+                        </Button>
+                      )}
 
                       {c.status !== 'cancelled' && (
                         <Button
