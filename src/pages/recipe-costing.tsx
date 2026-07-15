@@ -216,7 +216,7 @@ export default function RecipeCosting() {
           {/* Filters Card */}
           <Card className="border border-border shadow-sm bg-card">
             <CardContent className="p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">From</Label>
                   <Input

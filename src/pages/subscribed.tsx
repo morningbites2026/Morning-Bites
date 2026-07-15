@@ -1300,7 +1300,7 @@ export default function Subscribed() {
             {/* Range */}
             {skipMode === 'range' && (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground font-bold uppercase tracking-wider">From</Label>
                     <Input type="date" value={skipRangeStart} onChange={e => setSkipRangeStart(e.target.value)} className="h-11 rounded-xl" />
