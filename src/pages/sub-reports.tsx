@@ -293,7 +293,7 @@ export default function SubReports() {
     customers.forEach(c => {
       const hasCp = customerPackages.some(cp => Number(cp.customer_id) === c.id);
       if (!hasCp && !c.is_deleted) {
-        total += c.used;
+        total += c.used + (c.renew_count * c.total);
       }
     });
     return total;
