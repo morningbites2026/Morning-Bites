@@ -369,13 +369,14 @@ export default function SubReports() {
   // Customers scheduled for tomorrow: active, not done, day matches, not skipped
   const tomorrowCustomers = useMemo(() => {
     return activeSubs.filter(c => {
-      // Get all active packages for this customer
-      const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
+      // Check if the customer has any customer packages
+      const hasAnyCustPacks = customerPackages.some(cp => Number(cp.customer_id) === c.id);
       
       let isScheduledForAnyPack = false;
       
-      if (custPacks.length > 0) {
-        // If they have active packages in customer_packages, check if any of them are scheduled for tomorrow
+      if (hasAnyCustPacks) {
+        // If they have entries in customer_packages, only look at their active custom packages
+        const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
         isScheduledForAnyPack = custPacks.some(cp => {
           if (cp.used >= cp.total) return false;
           
@@ -384,7 +385,7 @@ export default function SubReports() {
           return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
         });
       } else if (c.package_id && c.used < c.total && c.status === 'active') {
-        // Legacy fallback
+        // Legacy fallback (only when no customer_packages exist)
         const effectivePrefDays = c.preferred_days || [];
         isScheduledForAnyPack = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
       }
@@ -403,11 +404,11 @@ export default function SubReports() {
   const prepGroups = useMemo(() => {
     return activePackagesList.map(pkg => {
       const custForPkg = tomorrowCustomers.filter(c => {
-        // Get all active packages for this customer
-        const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
+        // Check if the customer has any customer packages
+        const hasAnyCustPacks = customerPackages.some(cp => Number(cp.customer_id) === c.id);
 
-        if (custPacks.length > 0) {
-          // Check if customer has active customer_package for this pkg
+        if (hasAnyCustPacks) {
+          const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
           const cp = custPacks.find(cp => cp.package_id === pkg.id && cp.used < cp.total);
           if (cp) {
             // Check if this specific package is scheduled for tomorrow
@@ -418,7 +419,7 @@ export default function SubReports() {
           return false;
         }
 
-        // Legacy fallback
+        // Legacy fallback (only when no customer_packages exist)
         if (c.package_id === pkg.id && c.used < c.total && c.status === 'active') {
           const effectivePrefDays = c.preferred_days || [];
           return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
