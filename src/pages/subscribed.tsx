@@ -125,92 +125,205 @@ export default function Subscribed() {
   const [, setLocation] = useLocation();
 
   const tomorrowCount = useMemo(() => {
-    const tomorrowISO = getISTTomorrowISO();
-    const d = new Date(tomorrowISO + 'T00:00:00');
-    const tomorrowDayIdx = (d.getDay() + 6) % 7;
+    const targetDate = getISTTomorrowISO();
+    const tomorrowISO = targetDate;
+    const d = new Date(targetDate + 'T00:00:00');
+    const tomorrowDayIdx = (d.getDay() + 6) % 7; // 0=Mon, 5=Sat
 
-    // Filter active subscribers for tomorrow
-    const tomorrowSubs = customers.filter(c => {
-      if (c.is_deleted || c.type !== 'subscribed' || c.status !== 'active') return false;
-      const isSkipped = mealSkips.some(s => Number(s.customer_id) === c.id && s.skip_date === tomorrowISO && !s.unskipped);
-      if (isSkipped) return false;
+    const activeSubs = customers.filter(c => (c.status === 'active' || c.status === 'hold') && !c.is_deleted);
 
-      const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
-      if (custPacks.length > 0) {
-        return custPacks.some(cp => {
+    const tomorrowCustomers = activeSubs.filter(c => {
+      if (c.status !== 'active') return false;
+      // Check if the customer has any customer packages
+      const hasAnyCustPacks = customerPackages.some(cp => Number(cp.customer_id) === c.id);
+      
+      let isScheduledForAnyPack = false;
+      
+      if (hasAnyCustPacks) {
+        // If they have entries in customer_packages, only look at their active custom packages
+        const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
+        isScheduledForAnyPack = custPacks.some(cp => {
           if (cp.used >= cp.total) return false;
-          const pkg = packages.find(p => p.id === cp.package_id);
-          if (pkg && getPackageSaladOptions(pkg).length > 0) {
-            const saladOpts = getPackageSaladOptions(pkg);
-            const saladKeys = saladOpts.map((opt: any) => `${opt.id}:${opt.option}`);
-            return saladKeys.some(key => {
-              const days = cp.salad_schedules?.[key] || [];
+          
+          if (cp.salad_schedules && Object.keys(cp.salad_schedules).length > 0) {
+            return Object.values(cp.salad_schedules).some((days: number[]) => {
               return days.length === 0 || days.includes(tomorrowDayIdx);
             });
           }
+
           const cpPrefDays = cp.preferred_days;
-          const effectivePrefDays = cpPrefDays !== undefined && cpPrefDays !== null ? cpPrefDays : (c.preferred_days || []);
+          const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
           return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
         });
+      } else if (c.package_id && c.used < c.total && c.status === 'active') {
+        // Legacy fallback (only when no customer_packages exist)
+        const effectivePrefDays = c.preferred_days || [];
+        isScheduledForAnyPack = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
       }
-      if (c.used >= c.total) return false;
-      const effectivePrefDays = c.preferred_days || [];
-      return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+
+      if (!isScheduledForAnyPack) return false;
+
+      // Check no skip for tomorrow (package-agnostic — any skip counts)
+      const isSkipped = mealSkips.some(s => Number(s.customer_id) === c.id && s.skip_date === tomorrowISO && !s.unskipped);
+      return !isSkipped;
     });
 
-    // Sum portions for tomorrow's subs
-    let subPortions = 0;
-    tomorrowSubs.forEach(c => {
-      const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active' && cp.used < cp.total);
-      if (custPacks.length > 0) {
+    const tomorrowPreorderSalads = preorders.filter(po => {
+      if (po.pickup_date !== tomorrowISO || po.is_fulfilled || po.is_cancelled) return false;
+      const saladItems = po.items.filter((it: any) => {
+        const mi = menuItems.find(m => m.name.toLowerCase() === it.name.toLowerCase());
+        return mi?.type === 'salad';
+      });
+      return saladItems.length > 0;
+    }).map(po => {
+      const saladItems = po.items.filter((it: any) => {
+        const mi = menuItems.find(m => m.name.toLowerCase() === it.name.toLowerCase());
+        return mi?.type === 'salad';
+      });
+      return { ...po, saladItems };
+    });
+
+    const groupMap = new Map<string, { id: string; name: string; type: 'salad' | 'package'; customers: any[] }>();
+
+    // 1. Group subscription customers
+    tomorrowCustomers.forEach(c => {
+      const hasAnyCustPacks = customerPackages.some(cp => Number(cp.customer_id) === c.id);
+
+      if (hasAnyCustPacks) {
+        const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active' && cp.used < cp.total);
         custPacks.forEach(cp => {
           const pkg = packages.find(p => p.id === cp.package_id);
           if (!pkg) return;
-          const saladOpts = getPackageSaladOptions(pkg);
-          if (saladOpts.length > 0) {
-            saladOpts.forEach((opt: any) => {
+
+          const pkgSaladOptions = getPackageSaladOptions(pkg);
+          if (pkgSaladOptions.length > 0) {
+            pkgSaladOptions.forEach((opt: any) => {
               const saladKey = `${opt.id}:${opt.option}`;
               const saladSched = cp.salad_schedules || {};
               const days = saladSched[saladKey] || [];
-              if (days.length === 0 || days.includes(tomorrowDayIdx)) {
-                subPortions += 1;
+              const isScheduled = days.length === 0 || days.includes(tomorrowDayIdx);
+              if (isScheduled) {
+                const saladItem = menuItems.find(mi => mi.id === opt.id);
+                const baseName = saladItem ? saladItem.name : `Salad ID ${opt.id}`;
+                const name = opt.option && opt.option.toLowerCase() !== 'regular'
+                  ? `${baseName} – ${opt.option}`
+                  : baseName;
+                const groupId = `salad-${saladKey}`;
+                if (!groupMap.has(groupId)) {
+                  groupMap.set(groupId, { id: groupId, name, type: 'salad', customers: [] });
+                }
+                groupMap.get(groupId)!.customers.push({
+                  isPreorder: false,
+                  customer: c,
+                  cp,
+                  instruction: cp.instruction || '',
+                  used: cp.used,
+                  total: cp.total
+                });
               }
             });
           } else {
+            // Fallback for package without salads
             const cpPrefDays = cp.preferred_days;
-            const effectivePrefDays = cpPrefDays !== undefined && cpPrefDays !== null ? cpPrefDays : (c.preferred_days || []);
-            if (effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx)) {
-              subPortions += 1;
+            const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
+            const isScheduled = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+            if (isScheduled) {
+              const groupId = `pkg-${pkg.id}`;
+              if (!groupMap.has(groupId)) {
+                groupMap.set(groupId, { id: groupId, name: pkg.name, type: 'package', customers: [] });
+              }
+              groupMap.get(groupId)!.customers.push({
+                isPreorder: false,
+                customer: c,
+                cp,
+                instruction: cp.instruction || '',
+                used: cp.used,
+                total: cp.total
+              });
             }
           }
         });
       } else {
-        if (c.package_id && c.used < c.total) {
+        // Legacy fallback
+        if (c.package_id && c.used < c.total && c.status === 'active') {
           const pkg = packages.find(p => p.id === c.package_id);
           if (pkg) {
             const effectivePrefDays = c.preferred_days || [];
-            if (effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx)) {
-              const saladOpts = getPackageSaladOptions(pkg);
-              subPortions += saladOpts.length > 0 ? saladOpts.length : 1;
+            const isScheduled = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+            if (isScheduled) {
+              const pkgSaladOptions = getPackageSaladOptions(pkg);
+              if (pkgSaladOptions.length > 0) {
+                pkgSaladOptions.forEach((opt: any) => {
+                  const saladKey = `${opt.id}:${opt.option}`;
+                  const saladItem = menuItems.find(mi => mi.id === opt.id);
+                  const baseName = saladItem ? saladItem.name : `Salad ID ${opt.id}`;
+                  const name = opt.option && opt.option.toLowerCase() !== 'regular'
+                    ? `${baseName} – ${opt.option}`
+                    : baseName;
+                  const groupId = `salad-${saladKey}`;
+                  if (!groupMap.has(groupId)) {
+                    groupMap.set(groupId, { id: groupId, name, type: 'salad', customers: [] });
+                  }
+                  groupMap.get(groupId)!.customers.push({
+                    isPreorder: false,
+                    customer: c,
+                    cp: null,
+                    instruction: '',
+                    used: c.used,
+                    total: c.total
+                  });
+                });
+              } else {
+                const groupId = `pkg-${pkg.id}`;
+                if (!groupMap.has(groupId)) {
+                  groupMap.set(groupId, { id: groupId, name: pkg.name, type: 'package', customers: [] });
+                }
+                groupMap.get(groupId)!.customers.push({
+                  isPreorder: false,
+                  customer: c,
+                  cp: null,
+                  instruction: '',
+                  used: c.used,
+                  total: c.total
+                });
+              }
             }
           }
         }
       }
     });
 
-    // Sum preorder portions for tomorrow
-    let preorderPortions = 0;
-    const tomorrowPreorders = preorders.filter(po => po.pickup_date === tomorrowISO && !po.is_fulfilled && !po.is_cancelled);
-    tomorrowPreorders.forEach(po => {
-      po.items.forEach((it: any) => {
-        const mi = menuItems.find(m => m.name.toLowerCase() === it.name.toLowerCase());
-        if (mi?.type === 'salad') {
-          preorderPortions += it.qty;
+    // 2. Group pre-order customers
+    tomorrowPreorderSalads.forEach(po => {
+      po.saladItems.forEach((it: any) => {
+        const saladItem = menuItems.find(m => m.name.toLowerCase() === it.name.toLowerCase());
+        if (!saladItem) return;
+
+        const option = it.option || "Regular";
+        const saladKey = `${saladItem.id}:${option}`;
+        const baseName = saladItem.name;
+        const name = option && option.toLowerCase() !== 'regular'
+          ? `${baseName} – ${option}`
+          : baseName;
+        const groupId = `salad-${saladKey}`;
+
+        if (!groupMap.has(groupId)) {
+          groupMap.set(groupId, { id: groupId, name, type: 'salad', customers: [] });
         }
+        groupMap.get(groupId)!.customers.push({
+          isPreorder: true,
+          customerName: po.customer_name || "One-time Customer",
+          phone: po.phone || "",
+          qty: it.qty,
+          notes: po.notes || ""
+        });
       });
     });
 
-    return subPortions + preorderPortions;
+    const prepGroups = Array.from(groupMap.values());
+    const prepCount = prepGroups.reduce((sum, g) => sum + g.customers.reduce((gSum, c) => gSum + (c.isPreorder ? c.qty : 1), 0), 0);
+
+    return prepCount;
   }, [customers, customerPackages, mealSkips, packages, preorders, menuItems]);
 
   const [filter, setFilter] = useState("all");

@@ -228,7 +228,7 @@ export default function Billing() {
           {!isEditMode && (
             <Button
               variant="outline"
-              onClick={() => navigate("/?tab=preorders")}
+              onClick={() => navigate("/preorder")}
               className="rounded-full shadow-sm font-bold border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center gap-1.5 h-9 text-xs cursor-pointer"
             >
               <CalendarDays className="w-4 h-4 text-emerald-600" /> Pre-Order ({activePreordersCount})
