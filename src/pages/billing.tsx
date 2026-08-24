@@ -23,9 +23,11 @@ const billDateToISO = (dateStr: string): string => {
 };
 
 export default function Billing() {
-  const { menuItems, refresh, editingBill, setEditingBill } = useStore();
+  const { menuItems, preorders, refresh, editingBill, setEditingBill } = useStore();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+
+  const activePreordersCount = preorders ? preorders.filter(po => !po.is_fulfilled && !po.is_cancelled).length : 0;
 
   const [customerName, setCustomerName] = useState("");
   const [notes, setNotes] = useState("");
@@ -222,11 +224,22 @@ export default function Billing() {
             : <><Receipt className="w-5 h-5 text-primary" /> New Bill</>
           }
         </h2>
-        {isEditMode && (
-          <Button variant="outline" size="sm" className="rounded-full gap-1.5 text-xs" onClick={() => setEditingBill(null)}>
-            <X className="w-3.5 h-3.5" /> Cancel Edit
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {!isEditMode && (
+            <Button
+              variant="outline"
+              onClick={() => navigate("/?tab=preorders")}
+              className="rounded-full shadow-sm font-bold border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center gap-1.5 h-9 text-xs cursor-pointer"
+            >
+              <CalendarDays className="w-4 h-4 text-emerald-600" /> Pre-Order ({activePreordersCount})
+            </Button>
+          )}
+          {isEditMode && (
+            <Button variant="outline" size="sm" className="rounded-full gap-1.5 text-xs" onClick={() => setEditingBill(null)}>
+              <X className="w-3.5 h-3.5" /> Cancel Edit
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Originally Placed — shown only in edit mode */}

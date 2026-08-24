@@ -28,3 +28,4 @@ db-backup-20260428
 scripts/migrate-db.mjs
 .env.example
 .env.example
+.vercel

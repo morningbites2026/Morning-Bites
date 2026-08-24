@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "wouter";
+import { useState, useMemo } from "react";
+import { Link, useLocation } from "wouter";
 import { useStore } from "@/lib/store";
 import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
@@ -7,11 +7,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Check, Undo2, SkipForward, RefreshCw, Trash2, Edit, MessageCircle, ChevronLeft, ChevronRight, History, Plus, Banknote, CreditCard, QrCode, Ban, AlertCircle, Pause, Play } from "lucide-react";
+import { Check, Undo2, SkipForward, RefreshCw, Trash2, Edit, MessageCircle, ChevronLeft, ChevronRight, History, Plus, Banknote, CreditCard, QrCode, Ban, AlertCircle, Pause, Play, CalendarCheck } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
@@ -36,38 +37,181 @@ function PaymentModeSelect({ value, onChange }: { value: string; onChange: (v: s
   );
 }
 
-const buildMealUpdateMsg = (name: string, used: number, remaining: number, total: number, pkgName?: string, todayUsed?: number) =>
-  `Hello ${name},\n\nHere is your meal update${pkgName ? ` for *${pkgName}*` : ''}:\n✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh meals every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you!`;
+const cleanMsgPkgName = (name?: string) => {
+  if (!name) return "";
+  return name.replace(/^Custom:\s*/, "");
+};
 
-const buildRenewPackMsg = (name: string, remaining: number, total: number, price: number, pkgName?: string) =>
-  `Hello ${name},\n\nYou currently have ${remaining} meal(s) remaining${pkgName ? ` in your *${pkgName}*` : ''}.\n\nRenew your pack today!\n🎉 ${total} fresh meals for just ₹${price}!\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you!`;
+const buildMealUpdateMsg = (name: string, used: number, remaining: number, total: number, pkgName?: string, todayUsed?: number) => {
+  const cleanName = cleanMsgPkgName(pkgName);
+  return `Hello ${name},\n\nHere is your meal update${cleanName ? ` for *${cleanName}*` : ''}:\n✅ Meals used so far: ${used}\n🥗 Meals remaining: ${remaining}\n📦 Total meals in pack: ${total}\n\nEnjoy your fresh meals every morning and stay healthy!\n\nTiming: 6:30 AM to 9:00 AM\nCall us: 9099172237 / 9429929822\n\nThank you!`;
+};
 
-const buildPackDoneMsg = (name: string, total: number, price: number, pkgName?: string) =>
-  `Hello ${name},\n\nAll ${total} meals${pkgName ? ` in your *${pkgName}*` : ''} have been used.\n\nRenew today!\n🎉 ${total} fresh meals for just ₹${price}!\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you!`;
+const buildRenewPackMsg = (name: string, remaining: number, total: number, price: number, pkgName?: string) => {
+  const cleanName = cleanMsgPkgName(pkgName);
+  return `Hello ${name},\n\nYou currently have ${remaining} meal(s) remaining${cleanName ? ` in your *${cleanName}*` : ''}.\n\nRenew your pack today!\n🎉 ${total} fresh meals for just ₹${price}!\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you!`;
+};
 
-const buildActiveSubMsg = (name: string, pkgName: string, total: number, price: number, startDate: string) =>
-  `Hello ${name},\n\nYour ${pkgName} subscription is now active!\n\n📦 Pack: ${total} meals\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
+const buildPackDoneMsg = (name: string, total: number, price: number, pkgName?: string) => {
+  const cleanName = cleanMsgPkgName(pkgName);
+  return `Hello ${name},\n\nAll ${total} meals${cleanName ? ` in your *${cleanName}*` : ''} have been used.\n\nRenew today!\n🎉 ${total} fresh meals for just ₹${price}!\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nThank you!`;
+};
+
+const buildActiveSubMsg = (name: string, pkgName: string, total: number, price: number, startDate: string) => {
+  const cleanName = cleanMsgPkgName(pkgName);
+  return `Hello ${name},\n\nYour ${cleanName} subscription is now active!\n\n📦 Pack: ${total} meals\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
+};
 
 const buildActiveSubMsgMulti = (name: string, pkgs: Package[], startDate: string) => {
-  const pkgsList = pkgs.map((p, i) => `${i + 1}. ${p.name} — ${p.meals_count ?? 10} meals — ₹${p.price}`).join('\n');
+  const pkgsList = pkgs.map((p, i) => {
+    const cleanName = cleanMsgPkgName(p.name);
+    return `${i + 1}. ${cleanName} — ${p.meals_count ?? 10} meals — ₹${p.price}`;
+  }).join('\n');
   const totalPrice = pkgs.reduce((s, p) => s + p.price, 0);
   const totalMeals = pkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0);
   return `Hello ${name},\n\nYour subscriptions are now active!\n\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
 };
 
-const buildRenewalMsg = (name: string, pkgName: string, total: number, price: number, startDate: string) =>
-  `Hello ${name},\n\nYour subscription has been renewed!\n\n🔄 Renewal\n📦 Package: ${pkgName}\n🍽️ Meals: ${total}\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
+const buildRenewalMsg = (name: string, pkgName: string, total: number, price: number, startDate: string) => {
+  const cleanName = cleanMsgPkgName(pkgName);
+  return `Hello ${name},\n\nYour subscription has been renewed!\n\n🔄 Renewal\n📦 Package: ${cleanName}\n🍽️ Meals: ${total}\n💰 Amount: ₹${price}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
+};
 
 const buildRenewalMsgMulti = (name: string, pkgs: Package[], startDate: string) => {
-  const pkgsList = pkgs.map((p, i) => `${i + 1}. ${p.name} — ${p.meals_count ?? 10} meals — ₹${p.price}`).join('\n');
+  const pkgsList = pkgs.map((p, i) => {
+    const cleanName = cleanMsgPkgName(p.name);
+    return `${i + 1}. ${cleanName} — ${p.meals_count ?? 10} meals — ₹${p.price}`;
+  }).join('\n');
   const totalPrice = pkgs.reduce((s, p) => s + p.price, 0);
   const totalMeals = pkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0);
   return `Hello ${name},\n\nYour subscriptions have been renewed!\n\n🔄 Renewal\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
 };
+const getUnionOfSchedules = (saladScheds: Record<string, number[]>, saladKeys: string[]) => {
+  if (!saladKeys || saladKeys.length === 0) return [];
+  let hasAllDays = false;
+  const unionSet = new Set<number>();
+  for (const key of saladKeys) {
+    const sched = saladScheds[key] || [];
+    if (sched.length === 0) {
+      hasAllDays = true;
+      break;
+    }
+    sched.forEach(d => unionSet.add(d));
+  }
+  if (hasAllDays || unionSet.size === 6) return [];
+  return Array.from(unionSet).sort();
+};
+
+const getPackageSaladOptions = (pkg?: Package | null) => {
+  if (!pkg) return [];
+  if (pkg.salad_options && pkg.salad_options.length > 0) {
+    return pkg.salad_options;
+  }
+  if (pkg.salad_ids && pkg.salad_ids.length > 0) {
+    return pkg.salad_ids.map(id => ({ id, option: "Regular" }));
+  }
+  return [];
+};
+
+function getISTTomorrowISO(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+}
 
 export default function Subscribed() {
-  const { customers, packages, walkins, mealSkips, customerPackages, refresh, searchQuery } = useStore();
+  const { customers, packages, walkins, mealSkips, customerPackages, menuItems, preorders, refresh, searchQuery } = useStore();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  const tomorrowCount = useMemo(() => {
+    const tomorrowISO = getISTTomorrowISO();
+    const d = new Date(tomorrowISO + 'T00:00:00');
+    const tomorrowDayIdx = (d.getDay() + 6) % 7;
+
+    // Filter active subscribers for tomorrow
+    const tomorrowSubs = customers.filter(c => {
+      if (c.is_deleted || c.type !== 'subscribed' || c.status !== 'active') return false;
+      const isSkipped = mealSkips.some(s => Number(s.customer_id) === c.id && s.skip_date === tomorrowISO && !s.unskipped);
+      if (isSkipped) return false;
+
+      const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
+      if (custPacks.length > 0) {
+        return custPacks.some(cp => {
+          if (cp.used >= cp.total) return false;
+          const pkg = packages.find(p => p.id === cp.package_id);
+          if (pkg && getPackageSaladOptions(pkg).length > 0) {
+            const saladOpts = getPackageSaladOptions(pkg);
+            const saladKeys = saladOpts.map((opt: any) => `${opt.id}:${opt.option}`);
+            return saladKeys.some(key => {
+              const days = cp.salad_schedules?.[key] || [];
+              return days.length === 0 || days.includes(tomorrowDayIdx);
+            });
+          }
+          const cpPrefDays = cp.preferred_days;
+          const effectivePrefDays = cpPrefDays !== undefined && cpPrefDays !== null ? cpPrefDays : (c.preferred_days || []);
+          return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+        });
+      }
+      if (c.used >= c.total) return false;
+      const effectivePrefDays = c.preferred_days || [];
+      return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+    });
+
+    // Sum portions for tomorrow's subs
+    let subPortions = 0;
+    tomorrowSubs.forEach(c => {
+      const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active' && cp.used < cp.total);
+      if (custPacks.length > 0) {
+        custPacks.forEach(cp => {
+          const pkg = packages.find(p => p.id === cp.package_id);
+          if (!pkg) return;
+          const saladOpts = getPackageSaladOptions(pkg);
+          if (saladOpts.length > 0) {
+            saladOpts.forEach((opt: any) => {
+              const saladKey = `${opt.id}:${opt.option}`;
+              const saladSched = cp.salad_schedules || {};
+              const days = saladSched[saladKey] || [];
+              if (days.length === 0 || days.includes(tomorrowDayIdx)) {
+                subPortions += 1;
+              }
+            });
+          } else {
+            const cpPrefDays = cp.preferred_days;
+            const effectivePrefDays = cpPrefDays !== undefined && cpPrefDays !== null ? cpPrefDays : (c.preferred_days || []);
+            if (effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx)) {
+              subPortions += 1;
+            }
+          }
+        });
+      } else {
+        if (c.package_id && c.used < c.total) {
+          const pkg = packages.find(p => p.id === c.package_id);
+          if (pkg) {
+            const effectivePrefDays = c.preferred_days || [];
+            if (effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx)) {
+              const saladOpts = getPackageSaladOptions(pkg);
+              subPortions += saladOpts.length > 0 ? saladOpts.length : 1;
+            }
+          }
+        }
+      }
+    });
+
+    // Sum preorder portions for tomorrow
+    let preorderPortions = 0;
+    const tomorrowPreorders = preorders.filter(po => po.pickup_date === tomorrowISO && !po.is_fulfilled && !po.is_cancelled);
+    tomorrowPreorders.forEach(po => {
+      po.items.forEach((it: any) => {
+        const mi = menuItems.find(m => m.name.toLowerCase() === it.name.toLowerCase());
+        if (mi?.type === 'salad') {
+          preorderPortions += it.qty;
+        }
+      });
+    });
+
+    return subPortions + preorderPortions;
+  }, [customers, customerPackages, mealSkips, packages, preorders, menuItems]);
 
   const [filter, setFilter] = useState("all");
 
@@ -95,6 +239,9 @@ export default function Subscribed() {
   const [addPkgPayMode, setAddPkgPayMode] = useState("cash");
   const [addPkgCash, setAddPkgCash] = useState("");
   const [addPkgQrOpen, setAddPkgQrOpen] = useState(false);
+  const [addPkgSaladDays, setAddPkgSaladDays] = useState<number[]>([]);
+  const [addPkgSaladSchedules, setAddPkgSaladSchedules] = useState<Record<string, number[]>>({});
+  const [addPkgInstruction, setAddPkgInstruction] = useState("");
 
   const [cancelModal, setCancelModal] = useState<{ open: boolean; customer: any; cp: CustomerPackage | null }>({ open: false, customer: null, cp: null });
 
@@ -108,19 +255,119 @@ export default function Subscribed() {
   const [addQrOpen, setAddQrOpen] = useState(false);
   const [addInstructions, setAddInstructions] = useState<Record<number, string>>({});
   const [editInstructions, setEditInstructions] = useState<Record<number, string>>({});
-  // Salad days: preferred delivery days per subscription
-  const [addSaladDays, setAddSaladDays] = useState<number[]>([]);
   const [editSaladDaysByCp, setEditSaladDaysByCp] = useState<Record<number, number[]>>({});
+  const [editSaladSchedulesByCp, setEditSaladSchedulesByCp] = useState<Record<number, Record<string, number[]>>>({});
+  const [addType, setAddType] = useState<'existing' | 'customize'>('existing');
+  const [addCustomSaladDays, setAddCustomSaladDays] = useState<Record<number, number[]>>({});
+  const [addSaladSchedules, setAddSaladSchedules] = useState<Record<number, Record<string, number[]>>>({});
 
-  const toggleAddSaladDay = (dayIdx: number) => {
-    setAddSaladDays(prev => {
-      if (prev.length === 0) return [0, 1, 2, 3, 4, 5].filter(d => d !== dayIdx);
-      if (prev.includes(dayIdx)) {
-        const next = prev.filter(d => d !== dayIdx);
-        return next.length === 6 ? [] : next;
+  // Customize tab fields
+  const [customSaladKeys, setCustomSaladKeys] = useState<string[]>([]);
+  const [customSaladSchedules, setCustomSaladSchedules] = useState<Record<string, number[]>>({});
+  const [customMealsCount, setCustomMealsCount] = useState<string>("10");
+  const [customPrice, setCustomPrice] = useState<string>("");
+  const [customPayMode, setCustomPayMode] = useState<"cash" | "upi" | "scanpay">("cash");
+  const [customIsActive, setCustomIsActive] = useState<boolean>(true);
+
+  const saladMenuItems = useMemo(() => {
+    return menuItems.filter(m => m.type === 'salad' && m.is_active);
+  }, [menuItems]);
+
+  const saladVariants = useMemo(() => {
+    const list: Array<{ id: number; name: string; option: string }> = [];
+    saladMenuItems.forEach(item => {
+      if (item.options && item.options.length > 0) {
+        item.options.forEach((opt: any) => {
+          list.push({ id: item.id, name: `${item.name} – ${opt.name}`, option: opt.name });
+        });
+      } else {
+        list.push({ id: item.id, name: item.name, option: 'Regular' });
       }
-      const next = [...prev, dayIdx].sort();
-      return next.length === 6 ? [] : next;
+    });
+    return list;
+  }, [saladMenuItems]);
+
+  const toggleEditSaladScheduleDay = (cpId: number, saladKey: string, dayIdx: number) => {
+    setEditSaladSchedulesByCp(prev => {
+      const cpSched = prev[cpId] || {};
+      const currentSaladDays = cpSched[saladKey] || [];
+      let nextSaladDays: number[];
+      if (currentSaladDays.length === 0) {
+        nextSaladDays = [0, 1, 2, 3, 4, 5].filter(d => d !== dayIdx);
+      } else if (currentSaladDays.includes(dayIdx)) {
+        nextSaladDays = currentSaladDays.filter(d => d !== dayIdx);
+      } else {
+        nextSaladDays = [...currentSaladDays, dayIdx].sort();
+      }
+      if (nextSaladDays.length === 6) nextSaladDays = [];
+      return {
+        ...prev,
+        [cpId]: {
+          ...cpSched,
+          [saladKey]: nextSaladDays
+        }
+      };
+    });
+  };
+
+  const toggleSaladScheduleDay = (pkgId: number, saladKey: string, dayIdx: number) => {
+    setAddSaladSchedules(prev => {
+      const pkgSched = prev[pkgId] || {};
+      const currentSaladDays = pkgSched[saladKey] || [];
+      let nextSaladDays: number[];
+      if (currentSaladDays.length === 0) {
+        nextSaladDays = [0, 1, 2, 3, 4, 5].filter(d => d !== dayIdx);
+      } else if (currentSaladDays.includes(dayIdx)) {
+        nextSaladDays = currentSaladDays.filter(d => d !== dayIdx);
+      } else {
+        nextSaladDays = [...currentSaladDays, dayIdx].sort();
+      }
+      if (nextSaladDays.length === 6) nextSaladDays = [];
+      return {
+        ...prev,
+        [pkgId]: {
+          ...pkgSched,
+          [saladKey]: nextSaladDays
+        }
+      };
+    });
+  };
+
+  const toggleCustomSaladScheduleDay = (saladKey: string, dayIdx: number) => {
+    setCustomSaladSchedules(prev => {
+      const currentSaladDays = prev[saladKey] || [];
+      let nextSaladDays: number[];
+      if (currentSaladDays.length === 0) {
+        nextSaladDays = [0, 1, 2, 3, 4, 5].filter(d => d !== dayIdx);
+      } else if (currentSaladDays.includes(dayIdx)) {
+        nextSaladDays = currentSaladDays.filter(d => d !== dayIdx);
+      } else {
+        nextSaladDays = [...currentSaladDays, dayIdx].sort();
+      }
+      if (nextSaladDays.length === 6) nextSaladDays = [];
+      return {
+        ...prev,
+        [saladKey]: nextSaladDays
+      };
+    });
+  };
+
+  const toggleAddPkgSaladScheduleDay = (saladKey: string, dayIdx: number) => {
+    setAddPkgSaladSchedules(prev => {
+      const currentSaladDays = prev[saladKey] || [];
+      let nextSaladDays: number[];
+      if (currentSaladDays.length === 0) {
+        nextSaladDays = [0, 1, 2, 3, 4, 5].filter(d => d !== dayIdx);
+      } else if (currentSaladDays.includes(dayIdx)) {
+        nextSaladDays = currentSaladDays.filter(d => d !== dayIdx);
+      } else {
+        nextSaladDays = [...currentSaladDays, dayIdx].sort();
+      }
+      if (nextSaladDays.length === 6) nextSaladDays = [];
+      return {
+        ...prev,
+        [saladKey]: nextSaladDays
+      };
     });
   };
 
@@ -188,10 +435,25 @@ export default function Subscribed() {
   });
 
   const selectedAddPkgs = activePackages.filter(p => addPkgIds.includes(p.id));
-  const addTotal = selectedAddPkgs.reduce((s, p) => s + p.price, 0);
+  const addTotal = addType === 'customize'
+    ? (Number(customPrice) || 0)
+    : selectedAddPkgs.reduce((s, p) => s + p.price, 0);
+
+  const upiTotal = addType === 'customize'
+    ? (customPayMode !== 'cash' ? addTotal : 0)
+    : (addPayMode !== 'cash' ? addTotal : 0);
+
+  const cashTotal = addType === 'customize'
+    ? (customPayMode === 'cash' ? addTotal : 0)
+    : (addPayMode === 'cash' ? addTotal : 0);
+
   const addCashNum = Number(addCash) || 0;
-  const addChange = addCashNum - addTotal;
-  const addUpiUrl = `upi://pay?pa=${UPI_ID}&pn=Morning+Bites&am=${addTotal}&cu=INR`;
+  const addChange = addCashNum - cashTotal;
+  const addUpiUrl = `upi://pay?pa=${UPI_ID}&pn=Morning+Bites&am=${upiTotal}&cu=INR`;
+
+  const hasScanPay = addType === 'customize'
+    ? customPayMode === 'scanpay'
+    : addPayMode === 'scanpay';
 
   const selectedAddPkgPkg = activePackages.find(p => p.id.toString() === addPkgPkgId);
   const addPkgTotal = selectedAddPkgPkg?.price || 0;
@@ -199,78 +461,185 @@ export default function Subscribed() {
 
   // ─── Add customer ─────────────────────────────────────────────────────────
   const handleAddCustomer = async () => {
-    if (!addName.trim() || !addPhone.trim() || addPkgIds.length === 0) {
-      toast({ variant: "destructive", description: "Name, phone and at least one package are required" });
+    if (!addName.trim() || !addPhone.trim()) {
+      toast({ variant: "destructive", description: "Name and phone are required" });
       return;
     }
-    if (addPayMode === 'scanpay' && !addQrOpen) {
+
+    if (addType === 'customize') {
+      if (customSaladKeys.length === 0) {
+        toast({ variant: "destructive", description: "Please select at least one salad" });
+        return;
+      }
+      if (!customMealsCount.trim() || Number(customMealsCount) <= 0) {
+        toast({ variant: "destructive", description: "Number of meals must be greater than 0" });
+        return;
+      }
+      if (!customPrice.trim() || Number(customPrice) < 0) {
+        toast({ variant: "destructive", description: "Price must be at least 0" });
+        return;
+      }
+    } else {
+      if (addPkgIds.length === 0) {
+        toast({ variant: "destructive", description: "At least one package is required" });
+        return;
+      }
+    }
+
+    if (hasScanPay && !addQrOpen) {
       setAddQrOpen(true);
       return;
     }
 
-    const primaryPkg = selectedAddPkgs[0];
     const today = getISTISODate();
     const dateDisplay = formatISTDate(today);
-    const primaryMeals = primaryPkg?.meals_count ?? 10;
+    const existingCust = customers.find(c => c.phone === addPhone);
 
-    const msg = isRenewalMode
-      ? (selectedAddPkgs.length === 1
-          ? buildRenewalMsg(addName, primaryPkg?.name || 'Sprouts Salad', primaryMeals, primaryPkg?.price || 0, dateDisplay)
-          : buildRenewalMsgMulti(addName, selectedAddPkgs, dateDisplay))
-      : (selectedAddPkgs.length === 1
-          ? buildActiveSubMsg(addName, primaryPkg?.name || 'Sprouts Salad', primaryMeals, primaryPkg?.price || 0, dateDisplay)
-          : buildActiveSubMsgMulti(addName, selectedAddPkgs, dateDisplay));
+    let msg = "";
+    if (addType === 'customize') {
+      const selectedVariants = saladVariants.filter(sv => customSaladKeys.includes(`${sv.id}:${sv.option}`));
+      const saladNames = selectedVariants.map(sv => sv.name).join(', ');
+      msg = isRenewalMode
+        ? buildRenewalMsg(addName, saladNames, Number(customMealsCount), Number(customPrice), dateDisplay)
+        : buildActiveSubMsg(addName, saladNames, Number(customMealsCount), Number(customPrice), dateDisplay);
+    } else {
+      const primaryPkg = selectedAddPkgs[0];
+      const primaryMeals = primaryPkg?.meals_count ?? 10;
+      msg = isRenewalMode
+        ? (selectedAddPkgs.length === 1
+            ? buildRenewalMsg(addName, primaryPkg?.name || 'Sprouts Salad', primaryMeals, primaryPkg?.price || 0, dateDisplay)
+            : buildRenewalMsgMulti(addName, selectedAddPkgs, dateDisplay))
+        : (selectedAddPkgs.length === 1
+            ? buildActiveSubMsg(addName, primaryPkg?.name || 'Sprouts Salad', primaryMeals, primaryPkg?.price || 0, dateDisplay)
+            : buildActiveSubMsgMulti(addName, selectedAddPkgs, dateDisplay));
+    }
     window.open(`https://wa.me/91${addPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 
     try {
-      const existingCust = customers.find(c => c.phone === addPhone);
       let custId: number | null = null;
 
-      if (existingCust) {
-        await dbUpd('customers', existingCust.id, {
-          name: addName, status: 'active', used: 0, total: primaryMeals,
-          renew_count: existingCust.renew_count + 1,
-          last_renewed: today, pack_start_date: today,
-          package_id: primaryPkg?.id || null, payment_mode: addPayMode
+      if (addType === 'customize') {
+        const selectedVariants = saladVariants.filter(sv => customSaladKeys.includes(`${sv.id}:${sv.option}`));
+        if (selectedVariants.length === 0) throw new Error("Selected salad variants not found");
+        
+        // 1. Create a custom package in the packages table
+        const customPkgRes = await dbIns<any>('packages', {
+          name: `Custom: ${selectedVariants.map(sv => sv.name).join(', ')}`,
+          price: Number(customPrice),
+          meals_count: Number(customMealsCount),
+          is_active: false,
+          salad_options: selectedVariants.map(sv => ({ id: sv.id, option: sv.option })),
+          salad_ids: selectedVariants.map(sv => sv.id)
         });
-        custId = existingCust.id;
-        await dbUpdWhere('meal_skips', `customer_id=eq.${custId}&skip_date=gte.${today}&unskipped=eq.false`, { unskipped: true });
-      } else {
-        const res = await dbIns<any>('customers', {
-          name: addName, phone: addPhone, type: 'subscribed',
-          total: primaryMeals, used: 0, join_date: today, renew_count: 0,
-          pack_start_date: today, status: 'active', is_deleted: false,
-          preferred_days: [], package_id: primaryPkg?.id || null, payment_mode: addPayMode
-        });
-        custId = res[0]?.id || null;
-      }
+        const newPkg = customPkgRes[0];
+        if (!newPkg) throw new Error("Failed to create custom package");
 
-      if (custId) {
-        for (const pkg of selectedAddPkgs) {
-          await dbIns('customer_packages', {
-            customer_id: custId,
-            package_id: pkg.id,
-            used: 0,
-            total: pkg.meals_count ?? 10,
-            pack_start_date: today,
-            payment_mode: addPayMode,
-            status: 'active',
-            renew_count: existingCust ? existingCust.renew_count + 1 : 0,
-            instruction: addInstructions[pkg.id] || '',
-            preferred_days: addSaladDays,
+        // Calculate union of preferred days
+        const customPkgSaladDays = getUnionOfSchedules(customSaladSchedules, customSaladKeys);
+
+        // 2. Insert or update customer
+        if (existingCust) {
+          await dbUpd('customers', existingCust.id, {
+            name: addName, status: customIsActive ? 'active' : 'hold', used: 0, total: Number(customMealsCount),
+            renew_count: existingCust.renew_count + 1,
+            last_renewed: today, pack_start_date: today,
+            package_id: newPkg.id, payment_mode: customPayMode
           });
+          custId = existingCust.id;
+          await dbUpdWhere('meal_skips', `customer_id=eq.${custId}&skip_date=gte.${today}&unskipped=eq.false`, { unskipped: true });
+        } else {
+          const res = await dbIns<any>('customers', {
+            name: addName, phone: addPhone, type: 'subscribed',
+            total: Number(customMealsCount), used: 0, join_date: today, renew_count: 0,
+            pack_start_date: today, status: customIsActive ? 'active' : 'hold', is_deleted: false,
+            preferred_days: customPkgSaladDays, package_id: newPkg.id, payment_mode: customPayMode
+          });
+          custId = res[0]?.id || null;
         }
-      }
 
-      const pkgNames = selectedAddPkgs.map(p => p.name).join(', ');
-      logActivity(custId, existingCust ? 'renewed' : 'subscribed', `${existingCust ? 'Renewed' : 'Subscribed'} to ${pkgNames} for ₹${addTotal}. Payment: ${addPayMode}`);
+        // 3. Insert customer_packages
+        await dbIns('customer_packages', {
+          customer_id: custId,
+          package_id: newPkg.id,
+          used: 0,
+          total: Number(customMealsCount),
+          pack_start_date: today,
+          payment_mode: customPayMode,
+          status: customIsActive ? 'active' : 'hold',
+          renew_count: existingCust ? existingCust.renew_count + 1 : 0,
+          instruction: addInstructions[newPkg.id] || '',
+          preferred_days: customPkgSaladDays,
+          salad_schedules: customSaladSchedules,
+        });
+
+        logActivity(custId, existingCust ? 'renewed' : 'subscribed', `${existingCust ? 'Renewed' : 'Subscribed'} to Custom Salad Subscription (${selectedVariants.map(sv => sv.name).join(', ')}) for ₹${customPrice}. Payment: ${customPayMode}`);
+      } else {
+        // Standard existing package flow
+        const primaryPkg = selectedAddPkgs[0];
+        const primaryMeals = primaryPkg?.meals_count ?? 10;
+        const primaryPkgPayMode = addPayMode;
+        const primaryPkgSaladOptions = getPackageSaladOptions(primaryPkg);
+        const primaryPkgSaladKeys = primaryPkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
+        const primaryPkgSaladDays = primaryPkgSaladKeys.length > 0
+          ? getUnionOfSchedules(addSaladSchedules[primaryPkg.id] || {}, primaryPkgSaladKeys)
+          : (addCustomSaladDays[primaryPkg.id] || []);
+
+        if (existingCust) {
+          await dbUpd('customers', existingCust.id, {
+            name: addName, status: 'active', used: 0, total: primaryMeals,
+            renew_count: existingCust.renew_count + 1,
+            last_renewed: today, pack_start_date: today,
+            package_id: primaryPkg?.id || null, payment_mode: primaryPkgPayMode
+          });
+          custId = existingCust.id;
+          await dbUpdWhere('meal_skips', `customer_id=eq.${custId}&skip_date=gte.${today}&unskipped=eq.false`, { unskipped: true });
+        } else {
+          const res = await dbIns<any>('customers', {
+            name: addName, phone: addPhone, type: 'subscribed',
+            total: primaryMeals, used: 0, join_date: today, renew_count: 0,
+            pack_start_date: today, status: 'active', is_deleted: false,
+            preferred_days: primaryPkgSaladDays, package_id: primaryPkg?.id || null, payment_mode: primaryPkgPayMode
+          });
+          custId = res[0]?.id || null;
+        }
+
+        if (custId) {
+          for (const pkg of selectedAddPkgs) {
+            const saladScheds = addSaladSchedules[pkg.id] || {};
+            const pkgSaladOptions = getPackageSaladOptions(pkg);
+            const pkgSaladKeys = pkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
+            const pkgSaladDays = pkgSaladKeys.length > 0
+              ? getUnionOfSchedules(saladScheds, pkgSaladKeys)
+              : (addCustomSaladDays[pkg.id] || []);
+            await dbIns('customer_packages', {
+              customer_id: custId,
+              package_id: pkg.id,
+              used: 0,
+              total: pkg.meals_count ?? 10,
+              pack_start_date: today,
+              payment_mode: addPayMode,
+              status: 'active',
+              renew_count: existingCust ? existingCust.renew_count + 1 : 0,
+              instruction: addInstructions[pkg.id] || '',
+              preferred_days: pkgSaladDays,
+              salad_schedules: saladScheds,
+            });
+          }
+        }
+
+        const pkgNames = selectedAddPkgs.map(p => p.name).join(', ');
+        logActivity(custId, existingCust ? 'renewed' : 'subscribed', `${existingCust ? 'Renewed' : 'Subscribed'} to ${pkgNames} for ₹${addTotal}. Payment: ${addPayMode}`);
+      }
 
       toast({ title: isRenewalMode ? "Subscription renewed!" : existingCust ? "Pack renewed!" : "Customer added and subscribed!" });
       setAddModal(false);
       setAddQrOpen(false);
       setIsRenewalMode(false);
       setAddName(""); setAddPhone(""); setAddPkgIds([]); setAddPayMode("cash"); setAddCash("");
-      setAddInstructions({}); setAddSaladDays([]);
+      setAddInstructions({});
+      setAddType("existing"); setAddCustomSaladDays({});
+      setCustomSaladKeys([]); setCustomSaladSchedules({}); setCustomMealsCount("10");
+      setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true);
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -298,6 +667,12 @@ export default function Subscribed() {
     window.open(`https://wa.me/91${c.phone}?text=${encodeURIComponent(msg)}`, '_blank');
 
     try {
+      const pkgSaladOptions = getPackageSaladOptions(pkg);
+      const pkgSaladKeys = pkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
+      const pkgSaladDays = pkgSaladKeys.length > 0
+        ? getUnionOfSchedules(addPkgSaladSchedules, pkgSaladKeys)
+        : addPkgSaladDays;
+
       await dbIns('customer_packages', {
         customer_id: c.id,
         package_id: Number(addPkgPkgId),
@@ -307,6 +682,9 @@ export default function Subscribed() {
         payment_mode: addPkgPayMode,
         status: 'active',
         renew_count: 0,
+        preferred_days: pkgSaladDays,
+        instruction: addPkgInstruction,
+        salad_schedules: addPkgSaladSchedules,
       });
 
       logActivity(c.id, 'pkg_added', `Additional package added: ${pkg?.name} for ₹${pkg?.price}`);
@@ -314,6 +692,7 @@ export default function Subscribed() {
       setAddPkgModal({ open: false, customer: null });
       setAddPkgQrOpen(false);
       setAddPkgPkgId(""); setAddPkgPayMode("cash"); setAddPkgCash("");
+      setAddPkgSaladDays([]); setAddPkgInstruction(""); setAddPkgSaladSchedules({});
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -387,7 +766,12 @@ export default function Subscribed() {
     setAddPayMode(cp?.payment_mode || c.payment_mode || 'cash');
     setAddCash('');
     setAddInstructions({});
-    setAddSaladDays(cp?.preferred_days || []);
+    if (pkgId) {
+      setAddCustomSaladDays({ [pkgId]: cp?.preferred_days || c.preferred_days || [] });
+    } else {
+      setAddCustomSaladDays({});
+    }
+    setAddType("existing");
   };
 
   // ─── Cancel ───────────────────────────────────────────────────────────────
@@ -619,12 +1003,15 @@ export default function Subscribed() {
     const cps = getCustPacks(c.id);
     const instr: Record<number, string> = {};
     const saladDays: Record<number, number[]> = {};
+    const saladScheds: Record<number, Record<number, number[]>> = {};
     cps.forEach(cp => {
       instr[cp.id] = cp.instruction || '';
       saladDays[cp.id] = cp.preferred_days || [];
+      saladScheds[cp.id] = cp.salad_schedules || {};
     });
     setEditInstructions(instr);
     setEditSaladDaysByCp(saladDays);
+    setEditSaladSchedulesByCp(saladScheds);
   };
 
   const saveEdit = async () => {
@@ -643,7 +1030,20 @@ export default function Subscribed() {
       for (const cp of cps) {
         const updates: Record<string, unknown> = {};
         if (editInstructions[cp.id] !== undefined) updates.instruction = editInstructions[cp.id];
-        if (editSaladDaysByCp[cp.id] !== undefined) updates.preferred_days = editSaladDaysByCp[cp.id];
+        
+        const saladScheds = editSaladSchedulesByCp[cp.id];
+        if (saladScheds !== undefined) {
+          updates.salad_schedules = saladScheds;
+          const pkg = packages.find(p => p.id === cp.package_id);
+          const pkgSaladOptions = getPackageSaladOptions(pkg);
+          const pkgSaladKeys = pkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
+          updates.preferred_days = pkgSaladKeys.length > 0
+            ? getUnionOfSchedules(saladScheds, pkgSaladKeys)
+            : (editSaladDaysByCp[cp.id] || []);
+        } else if (editSaladDaysByCp[cp.id] !== undefined) {
+          updates.preferred_days = editSaladDaysByCp[cp.id];
+        }
+
         if (Object.keys(updates).length > 0) {
           await dbUpd('customer_packages', cp.id, updates);
         }
@@ -722,17 +1122,29 @@ export default function Subscribed() {
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300 pb-8">
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-start">
         <h2 className="text-xl font-bold">Subscribed</h2>
-        <Button
-          onClick={() => {
-            setAddModal(true); setAddQrOpen(false); setAddName(""); setAddPhone("");
-            setAddPkgIds([]); setAddPayMode("cash"); setAddCash(""); setAddInstructions({}); setAddSaladDays([]);
-          }}
-          className="rounded-full shadow-md font-bold px-4"
-        >
-          <Plus className="w-4 h-4 mr-1.5" /> Add
-        </Button>
+        <div className="flex flex-col items-end gap-1.5">
+          <Button
+            onClick={() => {
+              setAddModal(true); setAddQrOpen(false); setAddName(""); setAddPhone("");
+              setAddPkgIds([]); setAddPayMode("cash"); setAddCash(""); setAddInstructions({});
+              setAddType("existing"); setAddCustomSaladDays({});
+              setCustomSaladKeys([]); setCustomSaladSchedules({}); setCustomMealsCount("10");
+              setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true);
+            }}
+            className="rounded-full shadow-md font-bold px-4 h-9 text-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4 mr-1.5" /> Add
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setLocation("/sub-reports?tab=prep")}
+            className="rounded-full shadow-sm font-bold border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center gap-1.5 h-8 text-[11px] px-3 cursor-pointer"
+          >
+            <CalendarCheck className="w-3.5 h-3.5 text-emerald-600" /> Prep for tomorrow ({tomorrowCount})
+          </Button>
+        </div>
       </div>
 
       <div className="bg-muted p-1.5 rounded-2xl flex overflow-x-auto hide-scrollbar shadow-inner border border-border">
@@ -1052,7 +1464,7 @@ export default function Subscribed() {
       </div>
 
       {/* ─── Add Customer Modal ─────────────────────────────────────────────── */}
-      <Dialog open={addModal} onOpenChange={v => { setAddModal(v); if (!v) { setAddQrOpen(false); setIsRenewalMode(false); } }}>
+      <Dialog open={addModal} onOpenChange={v => { setAddModal(v); if (!v) { setAddQrOpen(false); setIsRenewalMode(false); setAddType("existing"); setAddCustomSaladDays({}); setCustomSaladKeys([]); setCustomSaladSchedules({}); setCustomMealsCount("10"); setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true); } }}>
         <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">
@@ -1061,7 +1473,7 @@ export default function Subscribed() {
           </DialogHeader>
           {addQrOpen ? (
             <div className="flex flex-col items-center gap-4 py-4">
-              <div className="text-3xl font-black text-primary">₹{addTotal}</div>
+              <div className="text-3xl font-black text-primary">₹{upiTotal}</div>
               <div className="p-3 bg-white rounded-2xl border">
                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(addUpiUrl)}`} alt="QR" className="w-40 h-40" />
               </div>
@@ -1084,106 +1496,360 @@ export default function Subscribed() {
                   <Label>Mobile Number</Label>
                   <Input type="tel" placeholder="10-digit number" value={addPhone} onChange={e => setAddPhone(e.target.value)} className="h-12 rounded-xl font-mono" />
                 </div>
+
                 <div className="space-y-2">
-                  <Label>Package(s) — tap to select one or more</Label>
-                  <div className="space-y-2">
-                    {activePackages.map(p => {
-                      const selected = addPkgIds.includes(p.id);
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => setAddPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                          className={cn(
-                            "w-full text-left p-3 rounded-xl border-2 transition-all flex justify-between items-center",
-                            selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
-                          )}
-                        >
-                          <div>
-                            <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
-                            <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
-                          </div>
-                          <span className={cn("font-bold", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
-                        </button>
-                      );
-                    })}
+                  <Label>Subscription Option</Label>
+                  <div className="flex bg-muted/60 p-1 rounded-xl w-full border border-border/80">
+                    <button
+                      type="button"
+                      onClick={() => setAddType('existing')}
+                      className={cn(
+                        "flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer",
+                        addType === 'existing'
+                          ? "bg-white dark:bg-card text-primary shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Existing
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddType('customize')}
+                      className={cn(
+                        "flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer",
+                        addType === 'customize'
+                          ? "bg-white dark:bg-card text-primary shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Customize
+                    </button>
                   </div>
                 </div>
-                {selectedAddPkgs.length > 0 && (
+
+                {addType === 'existing' ? (
+                  <div className="space-y-2">
+                    <Label>Package(s) — tap to select one or more</Label>
+                    <div className="space-y-2">
+                      {activePackages.map(p => {
+                        const selected = addPkgIds.includes(p.id);
+                        return (
+                          <div
+                            key={p.id}
+                            className={cn(
+                              "rounded-2xl border-2 transition-all p-3 space-y-3",
+                              selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+                            )}
+                          >
+                            <div
+                              className="flex justify-between items-center cursor-pointer"
+                              onClick={() => setAddPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                            >
+                              <div>
+                                <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
+                                <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className={cn("font-bold text-sm", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
+                                <div className={cn(
+                                  "w-5 h-5 rounded-full border flex items-center justify-center transition-all",
+                                  selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30"
+                                )}>
+                                  {selected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                              </div>
+                            </div>
+
+                            {selected && (
+                              <div className="pt-3 border-t border-dashed border-border/80 space-y-3 animate-in fade-in duration-200">
+                                {/* Display Associated Salads with Individual schedules */}
+                                {getPackageSaladOptions(p).length > 0 ? (
+                                  <div className="space-y-3">
+                                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
+                                    {getPackageSaladOptions(p).map((opt: any, optIdx: number) => {
+                                      const item = menuItems.find(mi => mi.id === opt.id);
+                                      if (!item) return null;
+                                      const saladKey = `${opt.id}:${opt.option}`;
+                                      const saladDays = (addSaladSchedules[p.id] || {})[saladKey] || [];
+                                      const label = opt.option && opt.option.toLowerCase() !== 'regular'
+                                        ? `${item.name} – ${opt.option}`
+                                        : item.name;
+                                      return (
+                                        <div key={`${p.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30">
+                                          <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400 flex items-center justify-between">
+                                            <span>🥗 {label}</span>
+                                          </div>
+                                          <div className="flex gap-1">
+                                            {DAYS.map((day, idx) => {
+                                              const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                                              return (
+                                                <button
+                                                  key={idx}
+                                                  type="button"
+                                                  onClick={() => toggleSaladScheduleDay(p.id, saladKey, idx)}
+                                                  className={cn(
+                                                    "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                                    isDaySelected
+                                                      ? 'bg-emerald-600 border-emerald-600 text-white'
+                                                      : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                                                  )}
+                                                >
+                                                  {day[0]}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                          <div className="text-[9px] text-muted-foreground">
+                                            {saladDays.length === 0
+                                              ? 'All days (Mon–Sat) — tap a day to exclude it'
+                                              : `${saladDays.length} day(s) selected`}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  /* Fallback to package-level Salad Days picker if no associated salads */
+                                  <div className="space-y-1.5">
+                                    <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Salad Days (Delivery Schedule)</Label>
+                                    <div className="flex gap-1">
+                                      {DAYS.map((day, idx) => {
+                                        const pkgSaladDays = addCustomSaladDays[p.id] || [];
+                                        const isDaySelected = pkgSaladDays.length === 0 || pkgSaladDays.includes(idx);
+                                        return (
+                                          <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => {
+                                              setAddCustomSaladDays(prev => {
+                                                const current = prev[p.id] || [];
+                                                let next: number[];
+                                                if (current.length === 0) {
+                                                  next = [0, 1, 2, 3, 4, 5].filter(d => d !== idx);
+                                                } else if (current.includes(idx)) {
+                                                  next = current.filter(d => d !== idx);
+                                                } else {
+                                                  next = [...current, idx].sort();
+                                                }
+                                                if (next.length === 6) next = [];
+                                                return { ...prev, [p.id]: next };
+                                              });
+                                            }}
+                                            className={cn(
+                                              "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                              isDaySelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
+                                            )}
+                                          >
+                                            {day[0]}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground">
+                                      {(addCustomSaladDays[p.id] || []).length === 0
+                                        ? 'All days (Mon–Sat) — tap a day to exclude it'
+                                        : `${(addCustomSaladDays[p.id] || []).length} day(s) selected`}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Special Instructions */}
+                                <div className="space-y-1">
+                                  <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Special Instructions</Label>
+                                  <Input
+                                    placeholder="e.g. No onions, extra sprouts..."
+                                    value={addInstructions[p.id] || ''}
+                                    onChange={e => setAddInstructions(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                    className="h-9 rounded-lg text-xs"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="space-y-2">
+                      <Label>Select Salad</Label>
+                      <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+                        {saladVariants.map(v => {
+                          const key = `${v.id}:${v.option}`;
+                          const selected = customSaladKeys.includes(key);
+                          const saladDays = customSaladSchedules[key] || [];
+                          return (
+                            <div
+                              key={key}
+                              className={cn(
+                                "rounded-2xl border transition-all p-3 space-y-3 bg-card",
+                                selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+                              )}
+                            >
+                              <div
+                                className="flex justify-between items-center cursor-pointer"
+                                onClick={() => {
+                                  setCustomSaladKeys(prev => {
+                                    const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <span className={cn("font-bold text-[13px]", selected && 'text-primary')}>{v.name}</span>
+                                <div className={cn(
+                                  "w-5 h-5 rounded-full border flex items-center justify-center transition-all",
+                                  selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30"
+                                )}>
+                                  {selected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                              </div>
+
+                              {selected && (
+                                <div className="pt-2 border-t border-dashed border-border/80 space-y-2.5 animate-in fade-in duration-200">
+                                  <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salad (Delivery Schedule)</div>
+                                  <div className="flex gap-1">
+                                    {DAYS.map((day, idx) => {
+                                      const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                                      return (
+                                        <button
+                                          key={idx}
+                                          type="button"
+                                          onClick={() => toggleCustomSaladScheduleDay(key, idx)}
+                                          className={cn(
+                                            "flex-1 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                            isDaySelected
+                                              ? 'bg-emerald-600 border-emerald-600 text-white'
+                                              : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                                          )}
+                                          style={{ minWidth: 0 }}
+                                        >
+                                          {day[0]}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="text-[9px] text-muted-foreground">
+                                    {saladDays.length === 0
+                                      ? 'All days (Mon–Sat) — tap a day to exclude it'
+                                      : `${saladDays.length} day(s) selected`}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Number of Meals</Label>
+                        <Input
+                          type="number"
+                          placeholder="e.g. 10"
+                          value={customMealsCount}
+                          onChange={e => setCustomMealsCount(e.target.value.replace(/[^0-9]/g, ''))}
+                          className="h-12 rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Price</Label>
+                        <Input
+                          type="number"
+                          placeholder="₹"
+                          value={customPrice}
+                          onChange={e => setCustomPrice(e.target.value)}
+                          className="h-12 rounded-xl"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Payment Mode</Label>
+                      <PaymentModeSelect
+                        value={customPayMode}
+                        onChange={(val) => setCustomPayMode(val as any)}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-2xl border border-border bg-muted/20">
+                      <div className="space-y-0.5">
+                        <Label className="text-sm font-semibold cursor-pointer" htmlFor="custom-active-toggle">Active Subscription</Label>
+                        <div className="text-xs text-muted-foreground">Mark subscription as active immediately</div>
+                      </div>
+                      <Switch
+                        id="custom-active-toggle"
+                        checked={customIsActive}
+                        onCheckedChange={setCustomIsActive}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {addType === 'customize' && customSaladKeys.length > 0 && (
+                  <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-sm flex justify-between">
+                    <span>Custom Subscription — {customMealsCount} meals total</span>
+                    <span className="font-bold text-primary">₹{addTotal}</span>
+                  </div>
+                )}
+
+                {addType === 'existing' && selectedAddPkgs.length > 0 && (
                   <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-sm flex justify-between">
                     <span>{selectedAddPkgs.length} pack{selectedAddPkgs.length > 1 ? 's' : ''} — {selectedAddPkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0)} meals total</span>
                     <span className="font-bold text-primary">₹{addTotal}</span>
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label>Payment Mode</Label>
-                  <PaymentModeSelect value={addPayMode} onChange={setAddPayMode} />
-                </div>
-                {addPayMode === 'cash' && addTotal > 0 && (
-                  <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 space-y-2">
-                    <Label className="text-amber-900 font-bold text-xs">Cash Received</Label>
-                    <Input type="number" placeholder="₹" value={addCash} onChange={e => setAddCash(e.target.value)} className="bg-white border-amber-300 h-11" />
-                    {addCash !== "" && (
-                      <div className={`flex justify-between text-sm font-bold p-2 rounded-lg ${addChange >= 0 ? 'text-green-800 bg-green-50' : 'text-red-800 bg-red-50'}`}>
-                        <span>{addChange >= 0 ? 'Change:' : 'Short:'}</span>
-                        <span>₹{Math.abs(addChange)}</span>
+
+                {addType === 'existing' ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Payment Mode</Label>
+                      <PaymentModeSelect value={addPayMode} onChange={setAddPayMode} />
+                    </div>
+                    {addPayMode === 'cash' && addTotal > 0 && (
+                      <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 space-y-2">
+                        <Label className="text-amber-900 font-bold text-xs">Cash Received</Label>
+                        <Input type="number" placeholder="₹" value={addCash} onChange={e => setAddCash(e.target.value)} className="bg-white border-amber-300 h-11" />
+                        {addCash !== "" && (
+                          <div className={`flex justify-between text-sm font-bold p-2 rounded-lg ${addChange >= 0 ? 'text-green-800 bg-green-50' : 'text-red-800 bg-red-50'}`}>
+                            <span>{addChange >= 0 ? 'Change:' : 'Short:'}</span>
+                            <span>₹{Math.abs(addChange)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
-                  </div>
-                )}
-                {addPayMode === 'upi' && addTotal > 0 && (
-                  <a href={addUpiUrl} className="flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-blue-300 bg-blue-50 text-blue-700 font-bold text-sm hover:bg-blue-100 transition-colors">
-                    <CreditCard className="w-4 h-4" /> Open UPI App — ₹{addTotal}
-                  </a>
-                )}
-                {selectedAddPkgs.length > 0 && (
-                  <div className="space-y-2">
-                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Special Instructions (per package)</Label>
-                    {selectedAddPkgs.map(pkg => (
-                      <div key={pkg.id} className="space-y-1">
-                        <div className="text-xs font-semibold text-primary">{pkg.name}</div>
-                        <Input
-                          placeholder="e.g. No onions, extra sprouts..."
-                          value={addInstructions[pkg.id] || ''}
-                          onChange={e => setAddInstructions(prev => ({ ...prev, [pkg.id]: e.target.value }))}
-                          className="h-9 rounded-lg text-sm"
-                        />
+                    {addPayMode === 'upi' && addTotal > 0 && (
+                      <a href={addUpiUrl} className="flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-blue-300 bg-blue-50 text-blue-700 font-bold text-sm hover:bg-blue-100 transition-colors">
+                        <CreditCard className="w-4 h-4" /> Open UPI App — ₹{addTotal}
+                      </a>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {cashTotal > 0 && (
+                      <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 space-y-2">
+                        <Label className="text-amber-900 font-bold text-xs">Cash Received (Total Cash: ₹{cashTotal})</Label>
+                        <Input type="number" placeholder="₹" value={addCash} onChange={e => setAddCash(e.target.value)} className="bg-white border-amber-300 h-11" />
+                        {addCash !== "" && (
+                          <div className={`flex justify-between text-sm font-bold p-2 rounded-lg ${addChange >= 0 ? 'text-green-800 bg-green-50' : 'text-red-800 bg-red-50'}`}>
+                            <span>{addChange >= 0 ? 'Change:' : 'Short:'}</span>
+                            <span>₹{Math.abs(addChange)}</span>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                    )}
+                    {upiTotal > 0 && (
+                      <a href={addUpiUrl} className="flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-blue-300 bg-blue-50 text-blue-700 font-bold text-sm hover:bg-blue-100 transition-colors">
+                        <CreditCard className="w-4 h-4" /> Open UPI App — ₹{upiTotal}
+                      </a>
+                    )}
+                  </>
                 )}
-
-                {/* Salad Days */}
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Salad Days (Delivery Schedule)</Label>
-                  <div className="flex gap-1.5">
-                    {DAYS.map((day, idx) => {
-                      const isSelected = addSaladDays.length === 0 || addSaladDays.includes(idx);
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => toggleAddSaladDay(idx)}
-                          className={cn(
-                            "flex-1 py-2 rounded-lg text-xs font-bold border-2 transition-all",
-                            isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
-                          )}
-                        >
-                          {day[0]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {addSaladDays.length === 0
-                      ? 'All days (Mon–Sat) — tap a day to exclude it'
-                      : `${addSaladDays.length} day${addSaladDays.length > 1 ? 's' : ''} selected`}
-                  </div>
-                </div>
               </div>
               <DialogFooter>
                 <Button onClick={handleAddCustomer} className="w-full h-14 text-lg rounded-xl font-bold">
-                  {addPayMode === 'scanpay' ? 'Show QR & Activate' : 'Activate Subscription'}
+                  {hasScanPay ? 'Show QR & Activate' : 'Activate Subscription'}
                 </Button>
               </DialogFooter>
             </>
@@ -1474,36 +2140,81 @@ export default function Subscribed() {
                   return (
                     <div key={cp.id} className="p-3 rounded-xl border border-border bg-muted/10 space-y-2.5">
                       <div className="text-xs font-bold text-primary">{pkg?.name || 'Package'} ({cp.total - cp.used} left)</div>
+                      
+                      {getPackageSaladOptions(pkg).length > 0 ? (
+                        <div className="space-y-3">
+                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
+                          {getPackageSaladOptions(pkg).map((opt: any, optIdx: number) => {
+                            const item = menuItems.find(mi => mi.id === opt.id);
+                            if (!item) return null;
+                            const saladKey = `${opt.id}:${opt.option}`;
+                            const saladDays = (editSaladSchedulesByCp[cp.id] || {})[saladKey] || [];
+                            const label = opt.option && opt.option.toLowerCase() !== 'regular'
+                              ? `${item.name} – ${opt.option}`
+                              : item.name;
+                            return (
+                              <div key={`${cp.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30">
+                                <div className="text-[10px] font-bold text-emerald-800 dark:text-emerald-400">🥗 {label}</div>
+                                <div className="flex gap-1">
+                                  {DAYS.map((day, idx) => {
+                                    const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                                    return (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => toggleEditSaladScheduleDay(cp.id, saladKey, idx)}
+                                        className={cn(
+                                          "flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition-all",
+                                          isDaySelected
+                                            ? 'bg-emerald-600 border-emerald-600 text-white font-bold'
+                                            : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                                        )}
+                                      >
+                                        {day[0]}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div className="text-[9px] text-muted-foreground">
+                                  {saladDays.length === 0 ? 'All days (Mon–Sat)' : `${saladDays.length} day(s) selected`}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        /* Fallback to package-level Salad Days picker if no associated salads */
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Salad Days</div>
+                          <div className="flex gap-1">
+                            {DAYS.map((day, idx) => {
+                              const isSelected = saladDays.length === 0 || saladDays.includes(idx);
+                              return (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => toggleEditSaladDay(cp.id, idx)}
+                                  className={cn(
+                                    "flex-1 py-1.5 rounded-lg text-[10px] font-bold border-2 transition-all",
+                                    isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
+                                  )}
+                                >
+                                  {day[0]}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {saladDays.length === 0 ? 'All days (Mon–Sat)' : `${saladDays.length} day${saladDays.length > 1 ? 's' : ''} selected`}
+                          </div>
+                        </div>
+                      )}
                       <Input
                         placeholder="e.g. No onions, extra sprouts..."
                         value={editInstructions[cp.id] || ''}
                         onChange={e => setEditInstructions(prev => ({ ...prev, [cp.id]: e.target.value }))}
                         className="h-9 rounded-lg text-sm"
                       />
-                      <div className="space-y-1.5">
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Salad Days</div>
-                        <div className="flex gap-1">
-                          {DAYS.map((day, idx) => {
-                            const isSelected = saladDays.length === 0 || saladDays.includes(idx);
-                            return (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => toggleEditSaladDay(cp.id, idx)}
-                                className={cn(
-                                  "flex-1 py-1.5 rounded-lg text-[10px] font-bold border-2 transition-all",
-                                  isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
-                                )}
-                              >
-                                {day[0]}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {saladDays.length === 0 ? 'All days (Mon–Sat)' : `${saladDays.length} day${saladDays.length > 1 ? 's' : ''} selected`}
-                        </div>
-                      </div>
                     </div>
                   );
                 })}
@@ -1575,9 +2286,110 @@ export default function Subscribed() {
                   </Select>
                 </div>
                 {selectedAddPkgPkg && (
-                  <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-sm flex justify-between">
-                    <span>{selectedAddPkgPkg.name} ({selectedAddPkgPkg.meals_count ?? 10} meals)</span>
-                    <span className="font-bold text-primary">₹{selectedAddPkgPkg.price}</span>
+                  <div className="space-y-3">
+                    <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-sm flex justify-between">
+                      <span>{selectedAddPkgPkg.name} ({selectedAddPkgPkg.meals_count ?? 10} meals)</span>
+                      <span className="font-bold text-primary">₹{selectedAddPkgPkg.price}</span>
+                    </div>
+
+                    {/* Display Associated Salads with Individual schedules */}
+                    {getPackageSaladOptions(selectedAddPkgPkg).length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
+                        {getPackageSaladOptions(selectedAddPkgPkg).map((opt: any, optIdx: number) => {
+                          const item = menuItems.find(mi => mi.id === opt.id);
+                          if (!item) return null;
+                          const saladKey = `${opt.id}:${opt.option}`;
+                          const saladDays = addPkgSaladSchedules[saladKey] || [];
+                          const label = opt.option && opt.option.toLowerCase() !== 'regular'
+                            ? `${item.name} – ${opt.option}`
+                            : item.name;
+                          return (
+                            <div key={`${selectedAddPkgPkg.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30 animate-in fade-in duration-200">
+                              <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400">🥗 {label}</div>
+                              <div className="flex gap-1">
+                                {DAYS.map((day, idx) => {
+                                  const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                                  return (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => toggleAddPkgSaladScheduleDay(saladKey, idx)}
+                                      className={cn(
+                                        "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                        isDaySelected
+                                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                                          : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                                      )}
+                                    >
+                                      {day[0]}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div className="text-[9px] text-muted-foreground">
+                                {saladDays.length === 0
+                                  ? 'All days (Mon–Sat) — tap a day to exclude it'
+                                  : `${saladDays.length} day(s) selected`}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      /* Fallback to package-level Salad Days picker if no associated salads */
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Salad Days (Delivery Schedule)</Label>
+                        <div className="flex gap-1">
+                          {DAYS.map((day, idx) => {
+                            const isDaySelected = addPkgSaladDays.length === 0 || addPkgSaladDays.includes(idx);
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setAddPkgSaladDays(prev => {
+                                    const current = prev || [];
+                                    let next: number[];
+                                    if (current.length === 0) {
+                                      next = [0, 1, 2, 3, 4, 5].filter(d => d !== idx);
+                                    } else if (current.includes(idx)) {
+                                      next = current.filter(d => d !== idx);
+                                    } else {
+                                      next = [...current, idx].sort();
+                                    }
+                                    if (next.length === 6) next = [];
+                                    return next;
+                                  });
+                                }}
+                                className={cn(
+                                  "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                  isDaySelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
+                                )}
+                              >
+                                {day[0]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {addPkgSaladDays.length === 0
+                            ? 'All days (Mon–Sat) — tap a day to exclude it'
+                            : `${addPkgSaladDays.length} day(s) selected`}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Special Instructions */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Special Instructions</Label>
+                      <Input
+                        placeholder="e.g. No onions, extra sprouts..."
+                        value={addPkgInstruction}
+                        onChange={e => setAddPkgInstruction(e.target.value)}
+                        className="h-9 rounded-lg text-xs"
+                      />
+                    </div>
                   </div>
                 )}
                 <div className="space-y-2">

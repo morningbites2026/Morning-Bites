@@ -108,9 +108,11 @@ export default function BillReports() {
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-300">
-      <h2 className="text-xl font-bold flex items-center gap-2">
-        <ReceiptText className="w-5 h-5 text-primary" /> Bill Reports
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <ReceiptText className="w-5 h-5 text-primary" /> Bill Reports
+        </h2>
+      </div>
 
       <div className="space-y-2">
         <Tabs value={period} onValueChange={v => { setPeriod(v); setFromDate(""); setToDate(""); }} className="w-full">

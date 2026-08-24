@@ -6,8 +6,9 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TrendingUp, Package, Users, UserPlus, RefreshCw, CheckCircle2, Utensils, CalendarCheck, DollarSign, Calendar, ChevronDown, ChevronUp } from "lucide-react";
-import { dbGet, ActivityLog } from "@/lib/supabase";
+import { TrendingUp, Package, Users, UserPlus, RefreshCw, CheckCircle2, Utensils, CalendarCheck, DollarSign, Calendar, ChevronDown, ChevronUp, Share2 } from "lucide-react";
+import { dbGet, ActivityLog, Package as DbPackage } from "@/lib/supabase";
+import { Button } from "@/components/ui/button";
 
 function getISTTomorrowISO(): string {
   const d = new Date();
@@ -16,12 +17,16 @@ function getISTTomorrowISO(): string {
 }
 
 export default function SubReports() {
-  const { customers, packages, customerPackages, mealSkips } = useStore();
+  const { customers, packages, customerPackages, mealSkips, preorders, menuItems } = useStore();
 
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [subDetailsExpanded, setSubDetailsExpanded] = useState(false);
   const [saladDetailsExpanded, setSaladDetailsExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("tab") || "stats";
+  });
 
   // Date states for custom revenue range
   const todayISO = useMemo(() => {
@@ -356,19 +361,44 @@ export default function SubReports() {
     },
   ];
 
-  const tomorrowISO = useMemo(() => getISTTomorrowISO(), []);
+  const [targetDate, setTargetDate] = useState<string>(() => getISTTomorrowISO());
+  const tomorrowISO = targetDate;
   const tomorrowDayIdx = useMemo(() => {
-    const d = new Date(tomorrowISO + 'T00:00:00');
+    const d = new Date(targetDate + 'T00:00:00');
     return (d.getDay() + 6) % 7; // 0=Mon, 5=Sat
-  }, [tomorrowISO]);
+  }, [targetDate]);
 
   const tomorrowDayLabel = useMemo(() => {
-    return new Date(tomorrowISO + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short' });
-  }, [tomorrowISO]);
+    return new Date(targetDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short' });
+  }, [targetDate]);
+
+  const handleShareWhatsApp = () => {
+    let msg = `📢 *Prep List for ${tomorrowDayLabel}*\n\n`;
+    
+    prepGroups.forEach(g => {
+      const totalQty = g.customers.reduce((sum, item) => sum + (item.isPreorder ? item.qty : 1), 0);
+      msg += `🥗 *${g.name}* (${totalQty} pack${totalQty !== 1 ? 's' : ''})\n`;
+      g.customers.forEach((c: any) => {
+        if (c.isPreorder) {
+          msg += `  • [PREORDER] ${c.customerName} (Qty: ${c.qty})${c.notes ? ` - _📝 ${c.notes}_` : ''}\n`;
+        } else {
+          msg += `  • ${c.customer.name}${c.instruction ? ` - _📝 ${c.instruction}_` : ''}\n`;
+        }
+      });
+      msg += '\n';
+    });
+
+    if (prepGroups.length === 0) {
+      msg += `No items scheduled for this day.`;
+    }
+
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+  };
 
   // Customers scheduled for tomorrow: active, not done, day matches, not skipped
   const tomorrowCustomers = useMemo(() => {
     return activeSubs.filter(c => {
+      if (c.status !== 'active') return false;
       // Check if the customer has any customer packages
       const hasAnyCustPacks = customerPackages.some(cp => Number(cp.customer_id) === c.id);
       
@@ -380,6 +410,12 @@ export default function SubReports() {
         isScheduledForAnyPack = custPacks.some(cp => {
           if (cp.used >= cp.total) return false;
           
+          if (cp.salad_schedules && Object.keys(cp.salad_schedules).length > 0) {
+            return Object.values(cp.salad_schedules).some((days: number[]) => {
+              return days.length === 0 || days.includes(tomorrowDayIdx);
+            });
+          }
+
           const cpPrefDays = cp.preferred_days;
           const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
           return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
@@ -398,38 +434,206 @@ export default function SubReports() {
     });
   }, [activeSubs, customerPackages, mealSkips, tomorrowISO, tomorrowDayIdx]);
 
-  // Group tomorrow's customers by active package
-  const activePackagesList = useMemo(() => packages.filter(p => p.is_active), [packages]);
+  const tomorrowPreorderSalads = useMemo(() => {
+    return preorders.filter(po => {
+      if (po.pickup_date !== tomorrowISO || po.is_fulfilled || po.is_cancelled) return false;
+      const saladItems = po.items.filter((it: any) => {
+        const mi = menuItems.find(m => m.name.toLowerCase() === it.name.toLowerCase());
+        return mi?.type === 'salad';
+      });
+      return saladItems.length > 0;
+    }).map(po => {
+      const saladItems = po.items.filter((it: any) => {
+        const mi = menuItems.find(m => m.name.toLowerCase() === it.name.toLowerCase());
+        return mi?.type === 'salad';
+      });
+      return { ...po, saladItems };
+    });
+  }, [preorders, menuItems, tomorrowISO]);
+
+
+
+  const getPackageSaladOptions = (pkg?: DbPackage | null) => {
+    if (!pkg) return [];
+    if (pkg.salad_options && pkg.salad_options.length > 0) {
+      return pkg.salad_options;
+    }
+    if (pkg.salad_ids && pkg.salad_ids.length > 0) {
+      return pkg.salad_ids.map(id => ({ id, option: "Regular" }));
+    }
+    return [];
+  };
 
   const prepGroups = useMemo(() => {
-    return activePackagesList.map(pkg => {
-      const custForPkg = tomorrowCustomers.filter(c => {
-        // Check if the customer has any customer packages
-        const hasAnyCustPacks = customerPackages.some(cp => Number(cp.customer_id) === c.id);
+    const groupMap = new Map<string, { id: string; name: string; type: 'salad' | 'package'; customers: any[] }>();
 
-        if (hasAnyCustPacks) {
-          const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
-          const cp = custPacks.find(cp => cp.package_id === pkg.id && cp.used < cp.total);
-          if (cp) {
-            // Check if this specific package is scheduled for tomorrow
+    // 1. Group subscription customers
+    tomorrowCustomers.forEach(c => {
+      const hasAnyCustPacks = customerPackages.some(cp => Number(cp.customer_id) === c.id);
+
+      if (hasAnyCustPacks) {
+        const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active' && cp.used < cp.total);
+        custPacks.forEach(cp => {
+          const pkg = packages.find(p => p.id === cp.package_id);
+          if (!pkg) return;
+
+          const pkgSaladOptions = getPackageSaladOptions(pkg);
+          if (pkgSaladOptions.length > 0) {
+            pkgSaladOptions.forEach((opt: any) => {
+              const saladKey = `${opt.id}:${opt.option}`;
+              const saladSched = cp.salad_schedules || {};
+              const days = saladSched[saladKey] || [];
+              const isScheduled = days.length === 0 || days.includes(tomorrowDayIdx);
+              if (isScheduled) {
+                const saladItem = menuItems.find(mi => mi.id === opt.id);
+                const baseName = saladItem ? saladItem.name : `Salad ID ${opt.id}`;
+                const name = opt.option && opt.option.toLowerCase() !== 'regular'
+                  ? `${baseName} – ${opt.option}`
+                  : baseName;
+                const groupId = `salad-${saladKey}`;
+                if (!groupMap.has(groupId)) {
+                  groupMap.set(groupId, { id: groupId, name, type: 'salad', customers: [] });
+                }
+                groupMap.get(groupId)!.customers.push({
+                  isPreorder: false,
+                  customer: c,
+                  cp,
+                  instruction: cp.instruction || '',
+                  used: cp.used,
+                  total: cp.total
+                });
+              }
+            });
+          } else {
+            // Fallback for package without salads
             const cpPrefDays = cp.preferred_days;
             const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
-            return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+            const isScheduled = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+            if (isScheduled) {
+              const groupId = `pkg-${pkg.id}`;
+              if (!groupMap.has(groupId)) {
+                groupMap.set(groupId, { id: groupId, name: pkg.name, type: 'package', customers: [] });
+              }
+              groupMap.get(groupId)!.customers.push({
+                isPreorder: false,
+                customer: c,
+                cp,
+                instruction: cp.instruction || '',
+                used: cp.used,
+                total: cp.total
+              });
+            }
           }
-          return false;
+        });
+      } else {
+        // Legacy fallback
+        if (c.package_id && c.used < c.total && c.status === 'active') {
+          const pkg = packages.find(p => p.id === c.package_id);
+          if (pkg) {
+            const effectivePrefDays = c.preferred_days || [];
+            const isScheduled = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+            if (isScheduled) {
+              const pkgSaladOptions = getPackageSaladOptions(pkg);
+              if (pkgSaladOptions.length > 0) {
+                pkgSaladOptions.forEach((opt: any) => {
+                  const saladKey = `${opt.id}:${opt.option}`;
+                  const saladItem = menuItems.find(mi => mi.id === opt.id);
+                  const baseName = saladItem ? saladItem.name : `Salad ID ${opt.id}`;
+                  const name = opt.option && opt.option.toLowerCase() !== 'regular'
+                    ? `${baseName} – ${opt.option}`
+                    : baseName;
+                  const groupId = `salad-${saladKey}`;
+                  if (!groupMap.has(groupId)) {
+                    groupMap.set(groupId, { id: groupId, name, type: 'salad', customers: [] });
+                  }
+                  groupMap.get(groupId)!.customers.push({
+                    isPreorder: false,
+                    customer: c,
+                    cp: null,
+                    instruction: '',
+                    used: c.used,
+                    total: c.total
+                  });
+                });
+              } else {
+                const groupId = `pkg-${pkg.id}`;
+                if (!groupMap.has(groupId)) {
+                  groupMap.set(groupId, { id: groupId, name: pkg.name, type: 'package', customers: [] });
+                }
+                groupMap.get(groupId)!.customers.push({
+                  isPreorder: false,
+                  customer: c,
+                  cp: null,
+                  instruction: '',
+                  used: c.used,
+                  total: c.total
+                });
+              }
+            }
+          }
         }
+      }
+    });
 
-        // Legacy fallback (only when no customer_packages exist)
-        if (c.package_id === pkg.id && c.used < c.total && c.status === 'active') {
-          const effectivePrefDays = c.preferred_days || [];
-          return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+    // 2. Group pre-order customers
+    tomorrowPreorderSalads.forEach(po => {
+      po.saladItems.forEach((it: any) => {
+        const saladItem = menuItems.find(m => m.name.toLowerCase() === it.name.toLowerCase());
+        if (!saladItem) return;
+
+        const option = it.option || "Regular";
+        const saladKey = `${saladItem.id}:${option}`;
+        const baseName = saladItem.name;
+        const name = option && option.toLowerCase() !== 'regular'
+          ? `${baseName} – ${option}`
+          : baseName;
+        const groupId = `salad-${saladKey}`;
+
+        if (!groupMap.has(groupId)) {
+          groupMap.set(groupId, { id: groupId, name, type: 'salad', customers: [] });
         }
-        
-        return false;
+        groupMap.get(groupId)!.customers.push({
+          isPreorder: true,
+          customerName: po.customer_name || "One-time Customer",
+          phone: po.phone || "",
+          qty: it.qty,
+          notes: po.notes || ""
+        });
       });
-      return { pkg, customers: custForPkg };
-    }).filter(g => g.customers.length > 0);
-  }, [activePackagesList, tomorrowCustomers, customerPackages, tomorrowDayIdx]);
+    });
+
+    const sortedGroups = Array.from(groupMap.values()).map(g => {
+      const parts = g.name.split(" – ");
+      const base = parts[0].trim();
+      const option = parts[1] ? parts[1].trim() : "";
+      return { group: g, base, option };
+    });
+
+    sortedGroups.sort((a, b) => {
+      const baseCompare = a.base.localeCompare(b.base, undefined, { sensitivity: 'base' });
+      if (baseCompare !== 0) return baseCompare;
+
+      const getOptionPriority = (opt: string) => {
+        const lower = opt.toLowerCase();
+        if (lower === 'full') return 1;
+        if (lower === 'half') return 2;
+        if (lower === 'regular' || lower === '') return 3;
+        return 4;
+      };
+
+      const pA = getOptionPriority(a.option);
+      const pB = getOptionPriority(b.option);
+      if (pA !== pB) return pA - pB;
+
+      return a.option.localeCompare(b.option, undefined, { sensitivity: 'base' });
+    });
+
+    return sortedGroups.map(pg => pg.group);
+  }, [tomorrowCustomers, tomorrowPreorderSalads, customerPackages, packages, menuItems, tomorrowDayIdx]);
+
+  const prepCount = useMemo(() => {
+    return prepGroups.reduce((sum, g) => sum + g.customers.reduce((gSum, c) => gSum + (c.isPreorder ? c.qty : 1), 0), 0);
+  }, [prepGroups]);
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300 pb-8">
@@ -437,11 +641,11 @@ export default function SubReports() {
         <TrendingUp className="w-5 h-5 text-primary" /> Sub Reports
       </h2>
 
-      <Tabs defaultValue="stats" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full bg-muted/50 p-1 grid grid-cols-2 rounded-xl">
           <TabsTrigger value="stats" className="rounded-lg text-xs">Stats</TabsTrigger>
           <TabsTrigger value="prep" className="rounded-lg text-xs">
-            Prep Tomorrow ({tomorrowCustomers.length})
+            Prep Tomorrow ({prepCount})
           </TabsTrigger>
         </TabsList>
 
@@ -604,22 +808,44 @@ export default function SubReports() {
         </TabsContent>
 
         <TabsContent value="prep" className="mt-4 space-y-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-xl border border-border">
-            <CalendarCheck className="w-4 h-4 text-primary shrink-0" />
-            <span>Customers scheduled for <span className="font-bold text-foreground">{tomorrowDayLabel}</span></span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/30 p-4 rounded-xl border border-border">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CalendarCheck className="w-4 h-4 text-primary shrink-0" />
+              <span>Preparation list for <span className="font-bold text-foreground">{tomorrowDayLabel}</span></span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleShareWhatsApp}
+                className="h-9 px-3 rounded-lg text-xs font-bold border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5" /> Share on WhatsApp
+              </Button>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="targetDate" className="text-xs font-bold text-muted-foreground shrink-0 ml-2">Select Date:</Label>
+                <Input
+                  type="date"
+                  id="targetDate"
+                  value={targetDate}
+                  onChange={(e) => setTargetDate(e.target.value)}
+                  className="h-9 w-40 rounded-lg text-xs font-semibold cursor-pointer"
+                />
+              </div>
+            </div>
           </div>
 
-          {tomorrowCustomers.length === 0 ? (
+          {tomorrowCustomers.length === 0 && tomorrowPreorderSalads.length === 0 ? (
             <div className="text-center p-10 text-muted-foreground bg-muted/20 rounded-2xl border border-dashed">
               <CalendarCheck className="w-10 h-10 opacity-30 mx-auto mb-2" />
-              <p className="text-sm">No subscribers scheduled for tomorrow.</p>
+              <p className="text-sm">No subscribers or pre-ordered salads scheduled for this date.</p>
             </div>
           ) : prepGroups.length === 0 ? (
-            // Fallback: no package assignments, show flat list
+            // Fallback: no package assignments, show flat list of subscribers
             <Card className="border-border shadow-sm">
               <CardContent className="p-4 space-y-2">
                 <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                  All Customers ({tomorrowCustomers.length})
+                  All Subscribers ({tomorrowCustomers.length})
                 </div>
                 {tomorrowCustomers.map(c => (
                   <div key={c.id} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
@@ -632,48 +858,77 @@ export default function SubReports() {
               </CardContent>
             </Card>
           ) : (
-            // Accordion per active package
-            <Accordion type="multiple" defaultValue={prepGroups.map(g => `pkg-${g.pkg.id}`)} className="w-full space-y-3">
-              {prepGroups.map(g => (
-                <AccordionItem key={g.pkg.id} value={`pkg-${g.pkg.id}`} className="border border-border rounded-xl px-4 bg-card shadow-sm">
-                  <AccordionTrigger className="hover:no-underline py-3">
-                    <div className="flex justify-between items-center w-full pr-4">
-                      <span className="font-bold text-sm text-foreground">{g.pkg.name}</span>
-                      <Badge className="bg-primary/10 text-primary border-primary/20 font-bold ml-2">
-                        {g.customers.length} customer{g.customers.length !== 1 ? 's' : ''}
-                      </Badge>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="pt-4 border-t border-border">
-                    <div className="space-y-1.5">
-                      {g.customers.map((c, idx) => {
-                        const cp = customerPackages.find(cp => Number(cp.customer_id) === c.id && cp.package_id === g.pkg.id && cp.status === 'active');
-                        const used = cp ? cp.used : c.used;
-                        const total = cp ? cp.total : c.total;
-                        return (
-                          <div key={c.id} className="py-2 border-b border-border last:border-0">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-sm">{c.name}</div>
-                                <div className="text-xs text-muted-foreground">{c.phone}</div>
-                                {cp?.instruction && (
-                                  <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 italic flex items-center gap-1">
-                                    📝 {cp.instruction}
+            // Accordion per active item (Salad or Package fallback)
+            <Accordion type="multiple" defaultValue={[...prepGroups.map(g => g.id)]} className="w-full space-y-3">
+              {prepGroups.map(g => {
+                const totalQty = g.customers.reduce((sum, item) => sum + (item.isPreorder ? item.qty : 1), 0);
+                return (
+                  <AccordionItem key={g.id} value={g.id} className="border border-border rounded-xl px-4 bg-card shadow-sm">
+                    <AccordionTrigger className="hover:no-underline py-3">
+                      <div className="flex justify-between items-center w-full pr-4">
+                        <span className="font-bold text-sm text-foreground">{g.name}</span>
+                        <Badge className="bg-primary/10 text-primary border-primary/20 font-bold ml-2">
+                          {totalQty} pack{totalQty !== 1 ? 's' : ''}
+                        </Badge>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-4 border-t border-border">
+                      <div className="space-y-1.5">
+                        {g.customers.map((c, idx) => {
+                          if (c.isPreorder) {
+                            return (
+                              <div key={`po-${idx}`} className="py-2 border-b border-border last:border-0 animate-in fade-in duration-200">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-semibold text-sm flex items-center gap-1.5 flex-wrap">
+                                      <span>{c.customerName}</span>
+                                      <span className="text-[9px] px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md font-bold">
+                                        Preorder
+                                      </span>
+                                    </div>
+                                    {c.phone && <div className="text-xs text-muted-foreground">{c.phone}</div>}
+                                    {c.notes && (
+                                      <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 italic flex items-center gap-1">
+                                        📝 {c.notes}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
+                                  <div className="text-xs text-right shrink-0 font-bold text-foreground">
+                                    Qty: {c.qty}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-xs text-right text-muted-foreground shrink-0">
-                                <div className="font-bold text-foreground">{total - used} left</div>
-                                <div>{used}/{total} used</div>
+                            );
+                          }
+
+                          const { customer, instruction, used, total } = c;
+                          return (
+                            <div key={`sub-${customer.id}-${idx}`} className="py-2 border-b border-border last:border-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-sm flex items-center gap-1.5 flex-wrap">
+                                    <span>{customer.name}</span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">{customer.phone}</div>
+                                  {instruction && (
+                                    <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 italic flex items-center gap-1">
+                                      📝 {instruction}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="text-xs text-right text-muted-foreground shrink-0">
+                                  <div className="font-bold text-foreground">{total - used} left</div>
+                                  <div>{used}/{total} used</div>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
+                          );
+                        })}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
             </Accordion>
           )}
         </TabsContent>

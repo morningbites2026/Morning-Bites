@@ -49,6 +49,10 @@ export default function Dashboard() {
   });
   const [toDate, setToDate] = useState<string>(getISTISODate);
   const [historySearch, setHistorySearch] = useState("");
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("tab") || "earnings";
+  });
 
   // Preorder edit state
   const [editPo, setEditPo] = useState<any>(null);
@@ -552,7 +556,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-300 pb-8">
-      <Tabs defaultValue="earnings" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full bg-muted/50 p-1 grid grid-cols-4 rounded-xl">
           <TabsTrigger value="earnings" className="rounded-lg text-xs">Earnings</TabsTrigger>
           <TabsTrigger value="quantity" className="rounded-lg text-xs">Quantity</TabsTrigger>

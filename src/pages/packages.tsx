@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useStore } from "@/lib/store";
 import { dbIns, dbUpd } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +13,7 @@ import { Plus, Package as PackageIcon, Edit, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Packages() {
-  const { packages, refresh } = useStore();
+  const { packages, menuItems, refresh } = useStore();
   const { toast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -22,6 +22,24 @@ export default function Packages() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [mealsCount, setMealsCount] = useState("10");
+  const [selectedSaladIds, setSelectedSaladIds] = useState<number[]>([]);
+  const [selectedSaladOptions, setSelectedSaladOptions] = useState<Array<{ id: number; option: string }>>([]);
+
+  const saladMenuItems = menuItems.filter(m => m.type === 'salad' && m.is_active);
+
+  const saladVariants = useMemo(() => {
+    const list: Array<{ id: number; name: string; option: string }> = [];
+    saladMenuItems.forEach(item => {
+      if (item.options && item.options.length > 0) {
+        item.options.forEach(opt => {
+          list.push({ id: item.id, name: item.name, option: opt.name });
+        });
+      } else {
+        list.push({ id: item.id, name: item.name, option: "Regular" });
+      }
+    });
+    return list;
+  }, [saladMenuItems]);
 
   const openAdd = () => {
     setEditingId(null);
@@ -29,6 +47,8 @@ export default function Packages() {
     setDescription("");
     setPrice("");
     setMealsCount("10");
+    setSelectedSaladIds([]);
+    setSelectedSaladOptions([]);
     setIsModalOpen(true);
   };
 
@@ -38,7 +58,20 @@ export default function Packages() {
     setDescription(pkg.description || "");
     setPrice(String(pkg.price));
     setMealsCount(String(pkg.meals_count ?? 10));
+    setSelectedSaladIds(pkg.salad_ids || []);
+    setSelectedSaladOptions(pkg.salad_options || []);
     setIsModalOpen(true);
+  };
+
+  const toggleSaladOptionSelection = (id: number, option: string) => {
+    setSelectedSaladOptions(prev => {
+      const exists = prev.some(x => x.id === id && x.option === option);
+      const next = exists
+        ? prev.filter(x => !(x.id === id && x.option === option))
+        : [...prev, { id, option }];
+      setSelectedSaladIds(Array.from(new Set(next.map(x => x.id))));
+      return next;
+    });
   };
 
   const handleSave = async () => {
@@ -53,6 +86,8 @@ export default function Packages() {
         description: description || null,
         price: Number(price),
         meals_count: Number(mealsCount) || 10,
+        salad_ids: selectedSaladIds,
+        salad_options: selectedSaladOptions,
       };
 
       if (editingId) {
@@ -131,6 +166,34 @@ export default function Packages() {
                         {pkg.meals_count ?? 10} meals
                       </div>
                     </div>
+                    {pkg.salad_ids && pkg.salad_ids.length > 0 && (
+                      <div className="mt-3 flex flex-col gap-1">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Included Salads</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {pkg.salad_options && pkg.salad_options.length > 0 ? (
+                            pkg.salad_options.map((opt: any, idx: number) => {
+                              const item = menuItems.find(mi => mi.id === opt.id);
+                              if (!item) return null;
+                              return (
+                                <span key={idx} className="text-[10px] px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full font-semibold">
+                                  {item.name}{opt.option && opt.option.toLowerCase() !== 'regular' ? ` – ${opt.option}` : ''}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            pkg.salad_ids.map((id: number) => {
+                              const item = menuItems.find(mi => mi.id === id);
+                              if (!item) return null;
+                              return (
+                                <span key={id} className="text-[10px] px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full font-semibold">
+                                  {item.name}
+                                </span>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-3">
                     <div className="flex items-center gap-1.5">
@@ -175,6 +238,38 @@ export default function Packages() {
             <div className="space-y-2">
               <Label>Package Name</Label>
               <Input placeholder="e.g. Sprouts Salad Pack" value={name} onChange={e => setName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Salad Items / Variants</Label>
+              {saladVariants.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic bg-muted/20 p-3 rounded-xl border border-dashed text-center">
+                  No salad items found in the menu.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2 max-h-[150px] overflow-y-auto p-2 border border-border rounded-xl bg-muted/5">
+                  {saladVariants.map((item, idx) => {
+                    const isSelected = selectedSaladOptions.some(x => x.id === item.id && x.option === item.option);
+                    const label = item.option && item.option.toLowerCase() !== 'regular'
+                      ? `${item.name} – ${item.option}`
+                      : item.name;
+                    return (
+                      <button
+                        key={`${item.id}-${item.option}-${idx}`}
+                        type="button"
+                        onClick={() => toggleSaladOptionSelection(item.id, item.option)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-sm cursor-pointer",
+                          isSelected
+                            ? "bg-emerald-500 border-emerald-500 text-white font-bold"
+                            : "bg-background border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">

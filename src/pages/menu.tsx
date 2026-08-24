@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Edit, Trash2, Tag, UtensilsCrossed, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,7 @@ export default function Menu() {
   const [sortOrder, setSortOrder] = useState("0");
   const [options, setOptions] = useState<{ name: string; price: string }[]>([{ name: "Regular", price: "" }]);
   const [category, setCategory] = useState<'daily' | 'week_special'>('daily');
+  const [type, setType] = useState<'breakfast' | 'salad'>('breakfast');
   const [weekDays, setWeekDays] = useState<number[]>([]);
 
   const dailyItems = menuItems.filter(m => (m.category || 'daily') === 'daily').sort((a, b) => a.sort_order - b.sort_order);
@@ -37,6 +39,7 @@ export default function Menu() {
     setSortOrder((menuItems.length * 10).toString());
     setOptions([{ name: "Regular", price: "" }]);
     setCategory(tab);
+    setType("breakfast");
     setWeekDays([]);
     setIsModalOpen(true);
   };
@@ -47,6 +50,7 @@ export default function Menu() {
     setSortOrder(item.sort_order.toString());
     setOptions(item.options.map((o: any) => ({ name: o.name, price: String(o.price) })));
     setCategory(item.category || 'daily');
+    setType(item.type || 'breakfast');
     setWeekDays(item.week_days || []);
     setIsModalOpen(true);
   };
@@ -71,6 +75,7 @@ export default function Menu() {
         sort_order: Number(sortOrder),
         options: options.map(o => ({ name: o.name, price: Number(o.price) || 0 })),
         category,
+        type,
         week_days: category === 'week_special' ? weekDays : []
       };
       if (!editingId) data.is_active = true;
@@ -121,8 +126,16 @@ export default function Menu() {
           <Card key={item.id} className={cn("border-border shadow-sm transition-opacity", !item.is_active && 'opacity-50')}>
             <CardContent className="p-4 flex justify-between items-start gap-4">
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <h3 className="font-bold text-lg">{item.name}</h3>
+                  <span className={cn(
+                    "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shadow-sm border",
+                    (item.type || 'breakfast') === 'salad' 
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200/50' 
+                      : 'bg-orange-50 text-orange-700 border-orange-200/50'
+                  )}>
+                    {item.type === 'salad' ? 'Salad' : 'Breakfast'}
+                  </span>
                   {(item.category || 'daily') === 'week_special' && (item.week_days || []).length > 0 && (
                     <span className="text-[10px] px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-bold">
                       {(item.week_days || []).map(d => DAY_NAMES[d]).join(', ')}
@@ -223,6 +236,19 @@ export default function Menu() {
                   </Label>
                 </div>
               </RadioGroup>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={type} onValueChange={(v: any) => setType(v)}>
+                <SelectTrigger className="w-full h-11 rounded-xl">
+                  <SelectValue placeholder="Select Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="breakfast">Breakfast</SelectItem>
+                  <SelectItem value="salad">Salad</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {category === 'week_special' && (

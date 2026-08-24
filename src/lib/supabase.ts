@@ -100,6 +100,7 @@ export interface MenuItem {
   sort_order: number;
   is_active: boolean;
   category: 'daily' | 'week_special';
+  type?: 'breakfast' | 'salad';
   week_days: number[];
   created_at: string;
 }
@@ -153,6 +154,8 @@ export interface Package {
   meals_count: number;
   is_active: boolean;
   is_deleted: boolean;
+  salad_ids?: number[];
+  salad_options?: Array<{ id: number; option: string }>;
   created_at: string;
 }
 
@@ -169,6 +172,7 @@ export interface CustomerPackage {
   last_renewed: string | null;
   preferred_days: number[]; // DB migration required: ALTER TABLE customer_packages ADD COLUMN preferred_days JSONB DEFAULT '[]';
   instruction?: string;
+  salad_schedules?: Record<string, number[]>;
   created_at: string;
 }
 
