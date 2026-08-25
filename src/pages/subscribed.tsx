@@ -539,7 +539,8 @@ export default function Subscribed() {
   const filteredSubs = activeSubs.filter(c => {
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase()) && !c.phone.includes(searchQuery)) return false;
     const { used, total } = getDisplayData(c);
-    if (filter === "active") return (c.status === 'active' || c.status === 'hold') && used < total;
+    if (filter === "active") return c.status === 'active' && used < total;
+    if (filter === "hold") return c.status === 'hold';
     if (filter === "low") return (c.status === 'active' || c.status === 'hold') && (total - used) <= 2 && used < total;
     if (filter === "done") return (c.status === 'active' || c.status === 'hold') && used >= total;
     if (filter === "new") return (c.status === 'active' || c.status === 'hold') && c.renew_count === 0;
@@ -1227,6 +1228,7 @@ export default function Subscribed() {
   const filters = [
     { id: "all", label: "All" },
     { id: "active", label: "Active" },
+    { id: "hold", label: "On Hold" },
     { id: "low", label: "Low" },
     { id: "done", label: "Done" },
     { id: "new", label: "New" },
