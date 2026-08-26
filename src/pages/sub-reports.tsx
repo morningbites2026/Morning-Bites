@@ -376,13 +376,13 @@ export default function SubReports() {
     let msg = `📢 *Prep List for ${tomorrowDayLabel}*\n\n`;
     
     prepGroups.forEach(g => {
-      const totalQty = g.customers.reduce((sum, item) => sum + (item.isPreorder ? item.qty : 1), 0);
+      const totalQty = g.customers.reduce((sum, item) => sum + (item.isPreorder ? item.qty : (item.qty || 1)), 0);
       msg += `🥗 *${g.name}* (${totalQty} pack${totalQty !== 1 ? 's' : ''})\n`;
       g.customers.forEach((c: any) => {
         if (c.isPreorder) {
           msg += `  • [PREORDER] ${c.customerName} (Qty: ${c.qty})${c.notes ? ` - _📝 ${c.notes}_` : ''}\n`;
         } else {
-          msg += `  • ${c.customer.name}${c.instruction ? ` - _📝 ${c.instruction}_` : ''}\n`;
+          msg += `  • ${c.customer.name}${c.qty > 1 ? ` (x${c.qty})` : ''}${c.instruction ? ` - _📝 ${c.instruction}_` : ''}\n`;
         }
       });
       msg += '\n';
@@ -500,7 +500,8 @@ export default function SubReports() {
                   cp,
                   instruction: cp.instruction || '',
                   used: cp.used,
-                  total: cp.total
+                  total: cp.total,
+                  qty: (cp.salad_frequencies && cp.salad_frequencies[saladKey]) || cp.frequency || 1
                 });
               }
             });
@@ -520,7 +521,8 @@ export default function SubReports() {
                 cp,
                 instruction: cp.instruction || '',
                 used: cp.used,
-                total: cp.total
+                total: cp.total,
+                qty: cp.frequency || 1
               });
             }
           }
@@ -632,7 +634,7 @@ export default function SubReports() {
   }, [tomorrowCustomers, tomorrowPreorderSalads, customerPackages, packages, menuItems, tomorrowDayIdx]);
 
   const prepCount = useMemo(() => {
-    return prepGroups.reduce((sum, g) => sum + g.customers.reduce((gSum, c) => gSum + (c.isPreorder ? c.qty : 1), 0), 0);
+    return prepGroups.reduce((sum, g) => sum + g.customers.reduce((gSum, c) => gSum + (c.qty || 1), 0), 0);
   }, [prepGroups]);
 
   return (
@@ -901,13 +903,18 @@ export default function SubReports() {
                             );
                           }
 
-                          const { customer, instruction, used, total } = c;
+                          const { customer, instruction, used, total, qty } = c;
                           return (
                             <div key={`sub-${customer.id}-${idx}`} className="py-2 border-b border-border last:border-0">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="font-semibold text-sm flex items-center gap-1.5 flex-wrap">
                                     <span>{customer.name}</span>
+                                    {qty > 1 && (
+                                      <span className="text-[10px] px-1.5 py-0.2 bg-blue-50 text-blue-700 border border-blue-100 rounded-md font-bold">
+                                        Qty: {qty}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-xs text-muted-foreground">{customer.phone}</div>
                                   {instruction && (

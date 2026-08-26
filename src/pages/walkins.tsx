@@ -13,6 +13,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, MessageCircle, Edit, Trash2, Search, CalendarDays, History, Megaphone, QrCode, Banknote, CreditCard, RefreshCw, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const getPackageSaladOptions = (pkg?: any | null) => {
+  if (!pkg) return [];
+  if (pkg.salad_options && pkg.salad_options.length > 0) {
+    return pkg.salad_options;
+  }
+  if (pkg.salad_ids && pkg.salad_ids.length > 0) {
+    return pkg.salad_ids.map((id: number) => ({ id, option: 'Regular' }));
+  }
+  return [];
+};
+
 export default function Walkins() {
   const { walkins, customers, packages, promotions, refresh, searchQuery } = useStore();
   const { toast } = useToast();
@@ -30,6 +41,7 @@ export default function Walkins() {
   const [subCash, setSubCash] = useState("");
   const [subQrOpen, setSubQrOpen] = useState(false);
   const [subInstructions, setSubInstructions] = useState<Record<number, string>>({});
+  const [subPkgFrequencies, setSubPkgFrequencies] = useState<Record<number, number>>({});
 
   const [promoteWalkin, setPromoteWalkin] = useState<any>(null);
   const [selectedPromoId, setSelectedPromoId] = useState<string>("");
@@ -93,6 +105,7 @@ export default function Walkins() {
     setSubCash("");
     setSubQrOpen(false);
     setSubInstructions({});
+    setSubPkgFrequencies({});
     setIsSubModalOpen(true);
   };
 
@@ -157,6 +170,13 @@ export default function Walkins() {
 
       if (custId) {
         for (const pkg of selectedPkgs) {
+          const freq = subPkgFrequencies[pkg.id] || 1;
+          const pkgSaladOptions = getPackageSaladOptions(pkg);
+          const saladFrequencies: Record<string, number> = {};
+          pkgSaladOptions.forEach((opt: any) => {
+            saladFrequencies[`${opt.id}:${opt.option}`] = freq;
+          });
+
           await dbIns('customer_packages', {
             customer_id: custId,
             package_id: pkg.id,
@@ -167,6 +187,8 @@ export default function Walkins() {
             status: 'active',
             renew_count: existingCust ? existingCust.renew_count + 1 : 0,
             instruction: subInstructions[pkg.id] || '',
+            frequency: freq,
+            salad_frequencies: saladFrequencies,
           });
         }
       }
@@ -183,6 +205,7 @@ export default function Walkins() {
       setIsSubModalOpen(false);
       setSubQrOpen(false);
       setSubPkgIds([]);
+      setSubPkgFrequencies({});
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -276,6 +299,48 @@ export default function Walkins() {
         toast({ variant: "destructive", description: err.message });
       }
     }
+  };
+
+  const renderWalkinPackageOption = (p: any) => {
+    const selected = subPkgIds.includes(p.id);
+    const freq = subPkgFrequencies[p.id] || 1;
+    return (
+      <div
+        key={p.id}
+        className={cn(
+          "rounded-2xl border-2 transition-all p-3 space-y-3 bg-card",
+          selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+        )}
+      >
+        <div
+          className="flex justify-between items-center cursor-pointer"
+          onClick={() => setSubPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+        >
+          <div>
+            <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
+            <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
+          </div>
+          <span className={cn("font-bold text-sm", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
+        </div>
+
+        {selected && (
+          <div className="pt-2 border-t border-dashed border-border/80 flex items-center gap-1.5 animate-in fade-in duration-200">
+            <Label className="text-xs font-semibold">Frequency (Qty/Day):</Label>
+            <Input
+              type="number"
+              min="1"
+              value={freq}
+              onChange={e => {
+                const val = Math.max(1, Number(e.target.value) || 1);
+                setSubPkgFrequencies(prev => ({ ...prev, [p.id]: val }));
+              }}
+              className="w-16 h-8 text-center"
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -468,26 +533,7 @@ export default function Walkins() {
                       {activePackages.filter(p => !p.package_type || p.package_type === 'individual').length === 0 ? (
                         <div className="text-xs text-muted-foreground italic pl-2">No individual packages found.</div>
                       ) : (
-                        activePackages.filter(p => !p.package_type || p.package_type === 'individual').map(p => {
-                          const selected = subPkgIds.includes(p.id);
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => setSubPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                              className={cn(
-                                "w-full text-left p-3 rounded-xl border-2 transition-all flex justify-between items-center bg-card",
-                                selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
-                              )}
-                            >
-                              <div>
-                                <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
-                                <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
-                              </div>
-                              <span className={cn("font-bold", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
-                            </button>
-                          );
-                        })
+                        activePackages.filter(p => !p.package_type || p.package_type === 'individual').map(p => renderWalkinPackageOption(p))
                       )}
                     </div>
 
@@ -497,26 +543,7 @@ export default function Walkins() {
                       {activePackages.filter(p => p.package_type === 'combo').length === 0 ? (
                         <div className="text-xs text-muted-foreground italic pl-2">No combo packages found.</div>
                       ) : (
-                        activePackages.filter(p => p.package_type === 'combo').map(p => {
-                          const selected = subPkgIds.includes(p.id);
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => setSubPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                              className={cn(
-                                "w-full text-left p-3 rounded-xl border-2 transition-all flex justify-between items-center bg-card",
-                                selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
-                              )}
-                            >
-                              <div>
-                                <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
-                                <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
-                              </div>
-                              <span className={cn("font-bold", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
-                            </button>
-                          );
-                        })
+                        activePackages.filter(p => p.package_type === 'combo').map(p => renderWalkinPackageOption(p))
                       )}
                     </div>
                   </div>

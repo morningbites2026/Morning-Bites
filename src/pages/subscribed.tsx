@@ -218,7 +218,8 @@ export default function Subscribed() {
                   cp,
                   instruction: cp.instruction || '',
                   used: cp.used,
-                  total: cp.total
+                  total: cp.total,
+                  qty: (cp.salad_frequencies && cp.salad_frequencies[saladKey]) || cp.frequency || 1
                 });
               }
             });
@@ -238,7 +239,8 @@ export default function Subscribed() {
                 cp,
                 instruction: cp.instruction || '',
                 used: cp.used,
-                total: cp.total
+                total: cp.total,
+                qty: cp.frequency || 1
               });
             }
           }
@@ -321,7 +323,7 @@ export default function Subscribed() {
     });
 
     const prepGroups = Array.from(groupMap.values());
-    const prepCount = prepGroups.reduce((sum, g) => sum + g.customers.reduce((gSum, c) => gSum + (c.isPreorder ? c.qty : 1), 0), 0);
+    const prepCount = prepGroups.reduce((sum, g) => sum + g.customers.reduce((gSum, c) => gSum + (c.qty || 1), 0), 0);
 
     return prepCount;
   }, [customers, customerPackages, mealSkips, packages, preorders, menuItems]);
@@ -375,7 +377,28 @@ export default function Subscribed() {
   const [addSaladSchedules, setAddSaladSchedules] = useState<Record<number, Record<string, number[]>>>({});
 
   // Customize tab fields
-  const [customSaladKeys, setCustomSaladKeys] = useState<string[]>([]);
+  const [customPkgIds, setCustomPkgIds] = useState<number[]>([]);
+  const [customPkgFrequencies, setCustomPkgFrequencies] = useState<Record<number, number>>({});
+  const [editPkgFrequencies, setEditPkgFrequencies] = useState<Record<number, number>>({});
+  const [addPkgFrequencies, setAddPkgFrequencies] = useState<Record<number, number>>({});
+  const [addPkgFrequency, setAddPkgFrequency] = useState<number>(1);
+
+  const customSaladKeys = useMemo(() => {
+    const keys: string[] = [];
+    customPkgIds.forEach(pkgId => {
+      const pkg = packages.find(p => p.id === pkgId);
+      if (!pkg) return;
+      const opts = getPackageSaladOptions(pkg);
+      opts.forEach(opt => {
+        const key = `${opt.id}:${opt.option}`;
+        if (!keys.includes(key)) {
+          keys.push(key);
+        }
+      });
+    });
+    return keys;
+  }, [customPkgIds, packages]);
+
   const [customSaladSchedules, setCustomSaladSchedules] = useState<Record<string, number[]>>({});
   const [customMealsCount, setCustomMealsCount] = useState<string>("10");
   const [customPrice, setCustomPrice] = useState<string>("");
@@ -674,6 +697,18 @@ export default function Subscribed() {
         }
 
         // 3. Insert customer_packages
+        const saladFrequencies: Record<string, number> = {};
+        customPkgIds.forEach(pkgId => {
+          const pkg = packages.find(p => p.id === pkgId);
+          if (!pkg) return;
+          const freq = customPkgFrequencies[pkgId] || 1;
+          const opts = getPackageSaladOptions(pkg);
+          opts.forEach(opt => {
+            const key = `${opt.id}:${opt.option}`;
+            saladFrequencies[key] = freq;
+          });
+        });
+
         await dbIns('customer_packages', {
           customer_id: custId,
           package_id: newPkg.id,
@@ -686,6 +721,8 @@ export default function Subscribed() {
           instruction: addInstructions[newPkg.id] || '',
           preferred_days: customPkgSaladDays,
           salad_schedules: customSaladSchedules,
+          frequency: 1,
+          salad_frequencies: saladFrequencies,
         });
 
         logActivity(custId, existingCust ? 'renewed' : 'subscribed', `${existingCust ? 'Renewed' : 'Subscribed'} to Custom Salad Subscription (${selectedVariants.map(sv => sv.name).join(', ')}) for ₹${customPrice}. Payment: ${customPayMode}`);
@@ -727,6 +764,13 @@ export default function Subscribed() {
             const pkgSaladDays = pkgSaladKeys.length > 0
               ? getUnionOfSchedules(saladScheds, pkgSaladKeys)
               : (addCustomSaladDays[pkg.id] || []);
+
+            const freq = addPkgFrequencies[pkg.id] || 1;
+            const saladFrequencies: Record<string, number> = {};
+            pkgSaladOptions.forEach(opt => {
+              saladFrequencies[`${opt.id}:${opt.option}`] = freq;
+            });
+
             await dbIns('customer_packages', {
               customer_id: custId,
               package_id: pkg.id,
@@ -739,6 +783,8 @@ export default function Subscribed() {
               instruction: addInstructions[pkg.id] || '',
               preferred_days: pkgSaladDays,
               salad_schedules: saladScheds,
+              frequency: freq,
+              salad_frequencies: saladFrequencies,
             });
           }
         }
@@ -754,7 +800,7 @@ export default function Subscribed() {
       setAddName(""); setAddPhone(""); setAddPkgIds([]); setAddPayMode("cash"); setAddCash("");
       setAddInstructions({});
       setAddType("existing"); setAddCustomSaladDays({});
-      setCustomSaladKeys([]); setCustomSaladSchedules({}); setCustomMealsCount("10");
+      setCustomPkgIds([]); setCustomPkgFrequencies({}); setAddPkgFrequencies({}); setCustomSaladSchedules({}); setCustomMealsCount("10");
       setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true);
       refresh();
     } catch (err: any) {
@@ -789,6 +835,12 @@ export default function Subscribed() {
         ? getUnionOfSchedules(addPkgSaladSchedules, pkgSaladKeys)
         : addPkgSaladDays;
 
+      const freq = addPkgFrequency || 1;
+      const saladFrequencies: Record<string, number> = {};
+      pkgSaladOptions.forEach(opt => {
+        saladFrequencies[`${opt.id}:${opt.option}`] = freq;
+      });
+
       await dbIns('customer_packages', {
         customer_id: c.id,
         package_id: Number(addPkgPkgId),
@@ -801,6 +853,8 @@ export default function Subscribed() {
         preferred_days: pkgSaladDays,
         instruction: addPkgInstruction,
         salad_schedules: addPkgSaladSchedules,
+        frequency: freq,
+        salad_frequencies: saladFrequencies,
       });
 
       logActivity(c.id, 'pkg_added', `Additional package added: ${pkg?.name} for ₹${pkg?.price}`);
@@ -809,6 +863,7 @@ export default function Subscribed() {
       setAddPkgQrOpen(false);
       setAddPkgPkgId(""); setAddPkgPayMode("cash"); setAddPkgCash("");
       setAddPkgSaladDays([]); setAddPkgInstruction(""); setAddPkgSaladSchedules({});
+      setAddPkgFrequency(1);
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -1120,14 +1175,17 @@ export default function Subscribed() {
     const instr: Record<number, string> = {};
     const saladDays: Record<number, number[]> = {};
     const saladScheds: Record<number, Record<number, number[]>> = {};
+    const freqs: Record<number, number> = {};
     cps.forEach(cp => {
       instr[cp.id] = cp.instruction || '';
       saladDays[cp.id] = cp.preferred_days || [];
       saladScheds[cp.id] = cp.salad_schedules || {};
+      freqs[cp.id] = cp.frequency ?? 1;
     });
     setEditInstructions(instr);
     setEditSaladDaysByCp(saladDays);
     setEditSaladSchedulesByCp(saladScheds);
+    setEditPkgFrequencies(freqs);
   };
 
   const saveEdit = async () => {
@@ -1147,6 +1205,18 @@ export default function Subscribed() {
         const updates: Record<string, unknown> = {};
         if (editInstructions[cp.id] !== undefined) updates.instruction = editInstructions[cp.id];
         
+        const freq = editPkgFrequencies[cp.id];
+        if (freq !== undefined) {
+          updates.frequency = freq;
+          const pkg = packages.find(p => p.id === cp.package_id);
+          const pkgSaladOptions = getPackageSaladOptions(pkg);
+          const saladFrequencies: Record<string, number> = {};
+          pkgSaladOptions.forEach(opt => {
+            saladFrequencies[`${opt.id}:${opt.option}`] = freq;
+          });
+          updates.salad_frequencies = saladFrequencies;
+        }
+
         const saladScheds = editSaladSchedulesByCp[cp.id];
         if (saladScheds !== undefined) {
           updates.salad_schedules = saladScheds;
@@ -1259,6 +1329,21 @@ export default function Subscribed() {
 
         {selected && (
           <div className="pt-3 border-t border-dashed border-border/80 space-y-3 animate-in fade-in duration-200">
+            {/* Frequency Selector */}
+            <div className="flex items-center gap-1.5 p-2.5 bg-muted/30 rounded-xl">
+              <Label className="text-xs font-semibold">Frequency (Qty/Day):</Label>
+              <Input
+                type="number"
+                min="1"
+                value={addPkgFrequencies[p.id] || 1}
+                onChange={e => {
+                  const val = Math.max(1, Number(e.target.value) || 1);
+                  setAddPkgFrequencies(prev => ({ ...prev, [p.id]: val }));
+                }}
+                className="w-16 h-8 text-center bg-background"
+              />
+            </div>
+
             {/* Display Associated Salads with Individual schedules */}
             {pkgSaladOptions.length > 0 ? (
               <div className="space-y-3">
@@ -1366,6 +1451,56 @@ export default function Subscribed() {
     );
   };
 
+  const renderCustomizePackageOption = (p: Package) => {
+    const selected = customPkgIds.includes(p.id);
+    const freq = customPkgFrequencies[p.id] || 1;
+    return (
+      <div
+        key={p.id}
+        className={cn(
+          "rounded-2xl border-2 transition-all p-3 space-y-3 bg-card",
+          selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+        )}
+      >
+        <div
+          className="flex justify-between items-center cursor-pointer"
+          onClick={() => setCustomPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+        >
+          <div>
+            <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
+            <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={cn("font-bold text-sm", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
+            <div className={cn(
+              "w-5 h-5 rounded-full border flex items-center justify-center transition-all",
+              selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30"
+            )}>
+              {selected && <Check className="w-3 h-3 stroke-[3]" />}
+            </div>
+          </div>
+        </div>
+
+        {selected && (
+          <div className="pt-2 border-t border-dashed border-border/80 flex items-center gap-1.5 animate-in fade-in duration-200">
+            <Label className="text-xs font-semibold">Frequency (Qty/Day):</Label>
+            <Input
+              type="number"
+              min="1"
+              value={freq}
+              onChange={e => {
+                const val = Math.max(1, Number(e.target.value) || 1);
+                setCustomPkgFrequencies(prev => ({ ...prev, [p.id]: val }));
+              }}
+              className="w-16 h-8 text-center"
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const filters = [
     { id: "all", label: "All" },
     { id: "active", label: "Active" },
@@ -1386,7 +1521,7 @@ export default function Subscribed() {
               setAddModal(true); setAddQrOpen(false); setAddName(""); setAddPhone("");
               setAddPkgIds([]); setAddPayMode("cash"); setAddCash(""); setAddInstructions({});
               setAddType("existing"); setAddCustomSaladDays({});
-              setCustomSaladKeys([]); setCustomSaladSchedules({}); setCustomMealsCount("10");
+              setCustomPkgIds([]); setCustomPkgFrequencies({}); setAddPkgFrequencies({}); setCustomSaladSchedules({}); setCustomMealsCount("10");
               setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true);
             }}
             className="rounded-full shadow-md font-bold px-4 h-9 text-xs cursor-pointer"
@@ -1720,7 +1855,7 @@ export default function Subscribed() {
       </div>
 
       {/* ─── Add Customer Modal ─────────────────────────────────────────────── */}
-      <Dialog open={addModal} onOpenChange={v => { setAddModal(v); if (!v) { setAddQrOpen(false); setIsRenewalMode(false); setAddType("existing"); setAddCustomSaladDays({}); setCustomSaladKeys([]); setCustomSaladSchedules({}); setCustomMealsCount("10"); setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true); } }}>
+      <Dialog open={addModal} onOpenChange={v => { setAddModal(v); if (!v) { setAddQrOpen(false); setIsRenewalMode(false); setAddType("existing"); setAddCustomSaladDays({}); setCustomPkgIds([]); setCustomPkgFrequencies({}); setAddPkgFrequencies({}); setCustomSaladSchedules({}); setCustomMealsCount("10"); setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true); } }}>
         <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">
@@ -1811,74 +1946,74 @@ export default function Subscribed() {
                 ) : (
                   <div className="space-y-4 animate-in fade-in duration-200">
                     <div className="space-y-2">
-                      <Label>Select Salad</Label>
-                      <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
-                        {saladVariants.map(v => {
-                          const key = `${v.id}:${v.option}`;
-                          const selected = customSaladKeys.includes(key);
-                          const saladDays = customSaladSchedules[key] || [];
-                          return (
-                            <div
-                              key={key}
-                              className={cn(
-                                "rounded-2xl border transition-all p-3 space-y-3 bg-card",
-                                selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
-                              )}
-                            >
-                              <div
-                                className="flex justify-between items-center cursor-pointer"
-                                onClick={() => {
-                                  setCustomSaladKeys(prev => {
-                                    const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
-                                    return next;
-                                  });
-                                }}
-                              >
-                                <span className={cn("font-bold text-[13px]", selected && 'text-primary')}>{v.name}</span>
-                                <div className={cn(
-                                  "w-5 h-5 rounded-full border flex items-center justify-center transition-all",
-                                  selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30"
-                                )}>
-                                  {selected && <Check className="w-3 h-3 stroke-[3]" />}
-                                </div>
-                              </div>
+                      <Label>Package(s) to Customize — select one or more</Label>
+                      <div className="space-y-4 max-h-[220px] overflow-y-auto pr-1">
+                        {/* Individual Packages */}
+                        <div className="space-y-2">
+                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Individual Packages</div>
+                          {activePackages.filter(p => !p.package_type || p.package_type === 'individual').length === 0 ? (
+                            <div className="text-xs text-muted-foreground italic pl-2">No individual packages found.</div>
+                          ) : (
+                            activePackages.filter(p => !p.package_type || p.package_type === 'individual').map(p => renderCustomizePackageOption(p))
+                          )}
+                        </div>
 
-                              {selected && (
-                                <div className="pt-2 border-t border-dashed border-border/80 space-y-2.5 animate-in fade-in duration-200">
-                                  <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salad (Delivery Schedule)</div>
-                                  <div className="flex gap-1">
-                                    {DAYS.map((day, idx) => {
-                                      const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
-                                      return (
-                                        <button
-                                          key={idx}
-                                          type="button"
-                                          onClick={() => toggleCustomSaladScheduleDay(key, idx)}
-                                          className={cn(
-                                            "flex-1 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
-                                            isDaySelected
-                                              ? 'bg-emerald-600 border-emerald-600 text-white'
-                                              : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
-                                          )}
-                                          style={{ minWidth: 0 }}
-                                        >
-                                          {day[0]}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                  <div className="text-[9px] text-muted-foreground">
-                                    {saladDays.length === 0
-                                      ? 'All days (Mon–Sat) — tap a day to exclude it'
-                                      : `${saladDays.length} day(s) selected`}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                        {/* Combo Packages */}
+                        <div className="space-y-2">
+                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Combo Packages</div>
+                          {activePackages.filter(p => p.package_type === 'combo').length === 0 ? (
+                            <div className="text-xs text-muted-foreground italic pl-2">No combo packages found.</div>
+                          ) : (
+                            activePackages.filter(p => p.package_type === 'combo').map(p => renderCustomizePackageOption(p))
+                          )}
+                        </div>
                       </div>
                     </div>
+
+                    {/* Configure Salad delivery schedules for custom selected packages */}
+                    {customSaladKeys.length > 0 && (
+                      <div className="space-y-2.5">
+                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Configure Salad Delivery Schedules</Label>
+                        <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                          {customSaladKeys.map(key => {
+                            const sv = saladVariants.find(x => `${x.id}:${x.option}` === key || `${x.id}:Regular` === key);
+                            const name = sv ? sv.name : `Salad ${key.split(':')[0]}`;
+                            const saladDays = customSaladSchedules[key] || [];
+                            return (
+                              <div key={key} className="p-2.5 bg-emerald-50/50 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30 space-y-2">
+                                <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400">🥗 {name}</div>
+                                <div className="flex gap-1">
+                                  {DAYS.map((day, idx) => {
+                                    const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                                    return (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => toggleCustomSaladScheduleDay(key, idx)}
+                                        className={cn(
+                                          "flex-1 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                          isDaySelected
+                                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                                            : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                                        )}
+                                        style={{ minWidth: 0 }}
+                                      >
+                                        {day[0]}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div className="text-[9px] text-muted-foreground">
+                                  {saladDays.length === 0
+                                    ? 'All days (Mon–Sat) — tap a day to exclude it'
+                                    : `${saladDays.length} day(s) selected`}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -2287,6 +2422,20 @@ export default function Subscribed() {
                   return (
                     <div key={cp.id} className="p-3 rounded-xl border border-border bg-muted/10 space-y-2.5">
                       <div className="text-xs font-bold text-primary">{pkg?.name || 'Package'} ({cp.total - cp.used} left)</div>
+
+                      <div className="flex items-center gap-1.5 p-2 bg-muted/30 rounded-xl animate-in fade-in duration-200">
+                        <Label className="text-xs font-semibold">Frequency (Qty/Day):</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={editPkgFrequencies[cp.id] ?? cp.frequency ?? 1}
+                          onChange={e => {
+                            const val = Math.max(1, Number(e.target.value) || 1);
+                            setEditPkgFrequencies(prev => ({ ...prev, [cp.id]: val }));
+                          }}
+                          className="w-16 h-8 text-center bg-background"
+                        />
+                      </div>
                       
                       {getPackageSaladOptions(pkg).length > 0 ? (
                         <div className="space-y-3">
@@ -2448,6 +2597,17 @@ export default function Subscribed() {
                     <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 text-sm flex justify-between">
                       <span>{selectedAddPkgPkg.name} ({selectedAddPkgPkg.meals_count ?? 10} meals)</span>
                       <span className="font-bold text-primary">₹{selectedAddPkgPkg.price}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 p-3 rounded-xl border border-border bg-muted/10 animate-in fade-in duration-200">
+                      <Label className="text-xs font-semibold">Frequency (Qty/Day):</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={addPkgFrequency}
+                        onChange={e => setAddPkgFrequency(Math.max(1, Number(e.target.value) || 1))}
+                        className="w-16 h-8 text-center bg-background"
+                      />
                     </div>
 
                     {/* Display Associated Salads with Individual schedules */}

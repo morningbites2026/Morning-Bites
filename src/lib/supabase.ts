@@ -174,6 +174,8 @@ export interface CustomerPackage {
   preferred_days: number[]; // DB migration required: ALTER TABLE customer_packages ADD COLUMN preferred_days JSONB DEFAULT '[]';
   instruction?: string;
   salad_schedules?: Record<string, number[]>;
+  frequency?: number;
+  salad_frequencies?: Record<string, number>;
   created_at: string;
 }
 
