@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Switch } from "@/components/ui/switch";
 import { Plus, Package as PackageIcon, Edit, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function Packages() {
   const { packages, menuItems, refresh } = useStore();
@@ -24,6 +25,7 @@ export default function Packages() {
   const [mealsCount, setMealsCount] = useState("10");
   const [selectedSaladIds, setSelectedSaladIds] = useState<number[]>([]);
   const [selectedSaladOptions, setSelectedSaladOptions] = useState<Array<{ id: number; option: string }>>([]);
+  const [packageType, setPackageType] = useState<string>("individual");
 
   const saladMenuItems = menuItems.filter(m => m.type === 'salad' && m.is_active);
 
@@ -49,6 +51,7 @@ export default function Packages() {
     setMealsCount("10");
     setSelectedSaladIds([]);
     setSelectedSaladOptions([]);
+    setPackageType("individual");
     setIsModalOpen(true);
   };
 
@@ -60,6 +63,7 @@ export default function Packages() {
     setMealsCount(String(pkg.meals_count ?? 10));
     setSelectedSaladIds(pkg.salad_ids || []);
     setSelectedSaladOptions(pkg.salad_options || []);
+    setPackageType(pkg.package_type || "individual");
     setIsModalOpen(true);
   };
 
@@ -88,6 +92,7 @@ export default function Packages() {
         meals_count: Number(mealsCount) || 10,
         salad_ids: selectedSaladIds,
         salad_options: selectedSaladOptions,
+        package_type: packageType,
       };
 
       if (editingId) {
@@ -165,6 +170,9 @@ export default function Packages() {
                       <div className="px-3 py-1 bg-primary/10 text-primary rounded-full font-bold text-sm">
                         {pkg.meals_count ?? 10} meals
                       </div>
+                      <div className="px-3 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 rounded-full font-bold text-sm capitalize">
+                        {pkg.package_type || 'individual'}
+                      </div>
                     </div>
                     {pkg.salad_ids && pkg.salad_ids.length > 0 && (
                       <div className="mt-3 flex flex-col gap-1">
@@ -238,6 +246,18 @@ export default function Packages() {
             <div className="space-y-2">
               <Label>Package Name</Label>
               <Input placeholder="e.g. Sprouts Salad Pack" value={name} onChange={e => setName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Package Type</Label>
+              <Select value={packageType} onValueChange={setPackageType}>
+                <SelectTrigger className="h-10 rounded-xl">
+                  <SelectValue placeholder="Select package type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="individual" className="cursor-pointer">Individual</SelectItem>
+                  <SelectItem value="combo" className="cursor-pointer">Combo</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Salad Items / Variants</Label>

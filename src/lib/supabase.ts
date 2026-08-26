@@ -156,6 +156,7 @@ export interface Package {
   is_deleted: boolean;
   salad_ids?: number[];
   salad_options?: Array<{ id: number; option: string }>;
+  package_type?: string;
   created_at: string;
 }
 

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Check, Undo2, SkipForward, RefreshCw, Trash2, Edit, MessageCircle, ChevronLeft, ChevronRight, History, Plus, Banknote, CreditCard, QrCode, Ban, AlertCircle, Pause, Play, CalendarCheck } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -1227,6 +1227,145 @@ export default function Subscribed() {
     });
   };
 
+  const renderPackageOption = (p: Package) => {
+    const selected = addPkgIds.includes(p.id);
+    const pkgSaladOptions = getPackageSaladOptions(p);
+    return (
+      <div
+        key={p.id}
+        className={cn(
+          "rounded-2xl border-2 transition-all p-3 space-y-3 bg-card",
+          selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+        )}
+      >
+        <div
+          className="flex justify-between items-center cursor-pointer"
+          onClick={() => setAddPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+        >
+          <div>
+            <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
+            <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={cn("font-bold text-sm", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
+            <div className={cn(
+              "w-5 h-5 rounded-full border flex items-center justify-center transition-all",
+              selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30"
+            )}>
+              {selected && <Check className="w-3 h-3 stroke-[3]" />}
+            </div>
+          </div>
+        </div>
+
+        {selected && (
+          <div className="pt-3 border-t border-dashed border-border/80 space-y-3 animate-in fade-in duration-200">
+            {/* Display Associated Salads with Individual schedules */}
+            {pkgSaladOptions.length > 0 ? (
+              <div className="space-y-3">
+                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
+                {pkgSaladOptions.map((opt: any, optIdx: number) => {
+                  const item = menuItems.find(mi => mi.id === opt.id);
+                  if (!item) return null;
+                  const saladKey = `${opt.id}:${opt.option}`;
+                  const saladDays = (addSaladSchedules[p.id] || {})[saladKey] || [];
+                  const label = opt.option && opt.option.toLowerCase() !== 'regular'
+                    ? `${item.name} – ${opt.option}`
+                    : item.name;
+                  return (
+                    <div key={`${p.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30">
+                      <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400 flex items-center justify-between">
+                        <span>🥗 {label}</span>
+                      </div>
+                      <div className="flex gap-1">
+                        {DAYS.map((day, idx) => {
+                          const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => toggleSaladScheduleDay(p.id, saladKey, idx)}
+                              className={cn(
+                                "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                isDaySelected
+                                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                                  : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                              )}
+                            >
+                              {day[0]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="text-[9px] text-muted-foreground">
+                        {saladDays.length === 0
+                          ? 'All days (Mon–Sat) — tap a day to exclude it'
+                          : `${saladDays.length} day(s) selected`}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Fallback to package-level Salad Days picker if no associated salads */
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Salad Days (Delivery Schedule)</Label>
+                <div className="flex gap-1">
+                  {DAYS.map((day, idx) => {
+                    const pkgSaladDays = addCustomSaladDays[p.id] || [];
+                    const isDaySelected = pkgSaladDays.length === 0 || pkgSaladDays.includes(idx);
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setAddCustomSaladDays(prev => {
+                            const current = prev[p.id] || [];
+                            let next: number[];
+                            if (current.length === 0) {
+                              next = [0, 1, 2, 3, 4, 5].filter(d => d !== idx);
+                            } else if (current.includes(idx)) {
+                              next = current.filter(d => d !== idx);
+                            } else {
+                              next = [...current, idx].sort();
+                            }
+                            if (next.length === 6) next = [];
+                            return { ...prev, [p.id]: next };
+                          });
+                        }}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                          isDaySelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
+                        )}
+                      >
+                        {day[0]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {(addCustomSaladDays[p.id] || []).length === 0
+                    ? 'All days (Mon–Sat) — tap a day to exclude it'
+                    : `${(addCustomSaladDays[p.id] || []).length} day(s) selected`}
+                </div>
+              </div>
+            )}
+
+            {/* Special Instructions */}
+            <div className="space-y-1">
+              <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Special Instructions</Label>
+              <Input
+                placeholder="e.g. No onions, extra sprouts..."
+                value={addInstructions[p.id] || ''}
+                onChange={e => setAddInstructions(prev => ({ ...prev, [p.id]: e.target.value }))}
+                className="h-9 rounded-lg text-xs"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const filters = [
     { id: "all", label: "All" },
     { id: "active", label: "Active" },
@@ -1647,144 +1786,26 @@ export default function Subscribed() {
                 {addType === 'existing' ? (
                   <div className="space-y-2">
                     <Label>Package(s) — tap to select one or more</Label>
-                    <div className="space-y-2">
-                      {activePackages.map(p => {
-                        const selected = addPkgIds.includes(p.id);
-                        return (
-                          <div
-                            key={p.id}
-                            className={cn(
-                              "rounded-2xl border-2 transition-all p-3 space-y-3",
-                              selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
-                            )}
-                          >
-                            <div
-                              className="flex justify-between items-center cursor-pointer"
-                              onClick={() => setAddPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                            >
-                              <div>
-                                <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
-                                <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <span className={cn("font-bold text-sm", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
-                                <div className={cn(
-                                  "w-5 h-5 rounded-full border flex items-center justify-center transition-all",
-                                  selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30"
-                                )}>
-                                  {selected && <Check className="w-3 h-3 stroke-[3]" />}
-                                </div>
-                              </div>
-                            </div>
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
+                      {/* Individual Packages */}
+                      <div className="space-y-2">
+                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Individual Packages</div>
+                        {activePackages.filter(p => !p.package_type || p.package_type === 'individual').length === 0 ? (
+                          <div className="text-xs text-muted-foreground italic pl-2">No individual packages found.</div>
+                        ) : (
+                          activePackages.filter(p => !p.package_type || p.package_type === 'individual').map(p => renderPackageOption(p))
+                        )}
+                      </div>
 
-                            {selected && (
-                              <div className="pt-3 border-t border-dashed border-border/80 space-y-3 animate-in fade-in duration-200">
-                                {/* Display Associated Salads with Individual schedules */}
-                                {getPackageSaladOptions(p).length > 0 ? (
-                                  <div className="space-y-3">
-                                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
-                                    {getPackageSaladOptions(p).map((opt: any, optIdx: number) => {
-                                      const item = menuItems.find(mi => mi.id === opt.id);
-                                      if (!item) return null;
-                                      const saladKey = `${opt.id}:${opt.option}`;
-                                      const saladDays = (addSaladSchedules[p.id] || {})[saladKey] || [];
-                                      const label = opt.option && opt.option.toLowerCase() !== 'regular'
-                                        ? `${item.name} – ${opt.option}`
-                                        : item.name;
-                                      return (
-                                        <div key={`${p.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30">
-                                          <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400 flex items-center justify-between">
-                                            <span>🥗 {label}</span>
-                                          </div>
-                                          <div className="flex gap-1">
-                                            {DAYS.map((day, idx) => {
-                                              const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
-                                              return (
-                                                <button
-                                                  key={idx}
-                                                  type="button"
-                                                  onClick={() => toggleSaladScheduleDay(p.id, saladKey, idx)}
-                                                  className={cn(
-                                                    "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
-                                                    isDaySelected
-                                                      ? 'bg-emerald-600 border-emerald-600 text-white'
-                                                      : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
-                                                  )}
-                                                >
-                                                  {day[0]}
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
-                                          <div className="text-[9px] text-muted-foreground">
-                                            {saladDays.length === 0
-                                              ? 'All days (Mon–Sat) — tap a day to exclude it'
-                                              : `${saladDays.length} day(s) selected`}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  /* Fallback to package-level Salad Days picker if no associated salads */
-                                  <div className="space-y-1.5">
-                                    <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Salad Days (Delivery Schedule)</Label>
-                                    <div className="flex gap-1">
-                                      {DAYS.map((day, idx) => {
-                                        const pkgSaladDays = addCustomSaladDays[p.id] || [];
-                                        const isDaySelected = pkgSaladDays.length === 0 || pkgSaladDays.includes(idx);
-                                        return (
-                                          <button
-                                            key={idx}
-                                            type="button"
-                                            onClick={() => {
-                                              setAddCustomSaladDays(prev => {
-                                                const current = prev[p.id] || [];
-                                                let next: number[];
-                                                if (current.length === 0) {
-                                                  next = [0, 1, 2, 3, 4, 5].filter(d => d !== idx);
-                                                } else if (current.includes(idx)) {
-                                                  next = current.filter(d => d !== idx);
-                                                } else {
-                                                  next = [...current, idx].sort();
-                                                }
-                                                if (next.length === 6) next = [];
-                                                return { ...prev, [p.id]: next };
-                                              });
-                                            }}
-                                            className={cn(
-                                              "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
-                                              isDaySelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
-                                            )}
-                                          >
-                                            {day[0]}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                    <div className="text-[10px] text-muted-foreground">
-                                      {(addCustomSaladDays[p.id] || []).length === 0
-                                        ? 'All days (Mon–Sat) — tap a day to exclude it'
-                                        : `${(addCustomSaladDays[p.id] || []).length} day(s) selected`}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Special Instructions */}
-                                <div className="space-y-1">
-                                  <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Special Instructions</Label>
-                                  <Input
-                                    placeholder="e.g. No onions, extra sprouts..."
-                                    value={addInstructions[p.id] || ''}
-                                    onChange={e => setAddInstructions(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                    className="h-9 rounded-lg text-xs"
-                                  />
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                      {/* Combo Packages */}
+                      <div className="space-y-2">
+                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Combo Packages</div>
+                        {activePackages.filter(p => p.package_type === 'combo').length === 0 ? (
+                          <div className="text-xs text-muted-foreground italic pl-2">No combo packages found.</div>
+                        ) : (
+                          activePackages.filter(p => p.package_type === 'combo').map(p => renderPackageOption(p))
+                        )}
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -2231,9 +2252,18 @@ export default function Subscribed() {
                   <SelectValue placeholder="Select package" />
                 </SelectTrigger>
                 <SelectContent>
-                  {packages.filter(p => p.is_active).map(p => (
-                    <SelectItem key={p.id} value={p.id.toString()}>{p.name} — {p.meals_count ?? 10} meals — ₹{p.price}</SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectLabel className="font-bold text-xs text-muted-foreground uppercase px-2 py-1">Individual Packages</SelectLabel>
+                    {packages.filter(p => p.is_active && (!p.package_type || p.package_type === 'individual')).map(p => (
+                      <SelectItem key={p.id} value={p.id.toString()} className="cursor-pointer">{p.name} — {p.meals_count ?? 10} meals — ₹{p.price}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel className="font-bold text-xs text-muted-foreground uppercase px-2 py-1 border-t border-border mt-1">Combo Packages</SelectLabel>
+                    {packages.filter(p => p.is_active && p.package_type === 'combo').map(p => (
+                      <SelectItem key={p.id} value={p.id.toString()} className="cursor-pointer">{p.name} — {p.meals_count ?? 10} meals — ₹{p.price}</SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -2394,11 +2424,22 @@ export default function Subscribed() {
                       <SelectValue placeholder="Choose a package" />
                     </SelectTrigger>
                     <SelectContent>
-                      {activePackages.map(p => (
-                        <SelectItem key={p.id} value={p.id.toString()}>
-                          {p.name} — {p.meals_count ?? 10} meals — ₹{p.price}
-                        </SelectItem>
-                      ))}
+                      <SelectGroup>
+                        <SelectLabel className="font-bold text-xs text-muted-foreground uppercase px-2 py-1">Individual Packages</SelectLabel>
+                        {activePackages.filter(p => !p.package_type || p.package_type === 'individual').map(p => (
+                          <SelectItem key={p.id} value={p.id.toString()} className="cursor-pointer">
+                            {p.name} — {p.meals_count ?? 10} meals — ₹{p.price}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel className="font-bold text-xs text-muted-foreground uppercase px-2 py-1 border-t border-border mt-1">Combo Packages</SelectLabel>
+                        {activePackages.filter(p => p.package_type === 'combo').map(p => (
+                          <SelectItem key={p.id} value={p.id.toString()} className="cursor-pointer">
+                            {p.name} — {p.meals_count ?? 10} meals — ₹{p.price}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </div>

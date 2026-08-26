@@ -461,27 +461,64 @@ export default function Walkins() {
 
                 <div className="space-y-2">
                   <Label className="text-muted-foreground font-bold uppercase tracking-wider text-xs">Package(s) — tap to select one or more</Label>
-                  <div className="space-y-2">
-                    {activePackages.map(p => {
-                      const selected = subPkgIds.includes(p.id);
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => setSubPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                          className={cn(
-                            "w-full text-left p-3 rounded-xl border-2 transition-all flex justify-between items-center",
-                            selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
-                          )}
-                        >
-                          <div>
-                            <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
-                            <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
-                          </div>
-                          <span className={cn("font-bold", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
-                        </button>
-                      );
-                    })}
+                  <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
+                    {/* Individual Packages */}
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Individual Packages</div>
+                      {activePackages.filter(p => !p.package_type || p.package_type === 'individual').length === 0 ? (
+                        <div className="text-xs text-muted-foreground italic pl-2">No individual packages found.</div>
+                      ) : (
+                        activePackages.filter(p => !p.package_type || p.package_type === 'individual').map(p => {
+                          const selected = subPkgIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => setSubPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                              className={cn(
+                                "w-full text-left p-3 rounded-xl border-2 transition-all flex justify-between items-center bg-card",
+                                selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+                              )}
+                            >
+                              <div>
+                                <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
+                                <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
+                              </div>
+                              <span className={cn("font-bold", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Combo Packages */}
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Combo Packages</div>
+                      {activePackages.filter(p => p.package_type === 'combo').length === 0 ? (
+                        <div className="text-xs text-muted-foreground italic pl-2">No combo packages found.</div>
+                      ) : (
+                        activePackages.filter(p => p.package_type === 'combo').map(p => {
+                          const selected = subPkgIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => setSubPkgIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                              className={cn(
+                                "w-full text-left p-3 rounded-xl border-2 transition-all flex justify-between items-center bg-card",
+                                selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+                              )}
+                            >
+                              <div>
+                                <div className={cn("font-bold text-sm", selected && 'text-primary')}>{p.name}</div>
+                                <div className="text-xs text-muted-foreground">{p.meals_count ?? 10} meals</div>
+                              </div>
+                              <span className={cn("font-bold", selected ? 'text-primary' : 'text-muted-foreground')}>₹{p.price}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                 </div>
 
