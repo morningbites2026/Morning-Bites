@@ -39,7 +39,10 @@ function PaymentModeSelect({ value, onChange }: { value: string; onChange: (v: s
 
 const cleanMsgPkgName = (name?: string) => {
   if (!name) return "";
-  return name.replace(/^Custom:\s*/, "");
+  if (name.toLowerCase().startsWith("custom:")) {
+    return "Your customized salad package";
+  }
+  return name;
 };
 
 const buildMealUpdateMsg = (name: string, used: number, remaining: number, total: number, pkgName?: string, todayUsed?: number) => {
