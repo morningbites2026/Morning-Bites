@@ -96,6 +96,7 @@ export interface Walkin {
 export interface MenuItem {
   id: number;
   name: string;
+  description?: string;
   options: Array<{ name: string; price: number }>;
   sort_order: number;
   is_active: boolean;

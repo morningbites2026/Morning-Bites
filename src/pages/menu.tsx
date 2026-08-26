@@ -24,6 +24,7 @@ export default function Menu() {
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
   const [options, setOptions] = useState<{ name: string; price: string }[]>([{ name: "Regular", price: "" }]);
   const [category, setCategory] = useState<'daily' | 'week_special'>('daily');
@@ -36,6 +37,7 @@ export default function Menu() {
   const handleOpenNew = () => {
     setEditingId(null);
     setName("");
+    setDescription("");
     setSortOrder((menuItems.length * 10).toString());
     setOptions([{ name: "Regular", price: "" }]);
     setCategory(tab);
@@ -47,6 +49,7 @@ export default function Menu() {
   const handleOpenEdit = (item: any) => {
     setEditingId(item.id);
     setName(item.name);
+    setDescription(item.description || "");
     setSortOrder(item.sort_order.toString());
     setOptions(item.options.map((o: any) => ({ name: o.name, price: String(o.price) })));
     setCategory(item.category || 'daily');
@@ -72,6 +75,7 @@ export default function Menu() {
     try {
       const data: any = {
         name,
+        description,
         sort_order: Number(sortOrder),
         options: options.map(o => ({ name: o.name, price: Number(o.price) || 0 })),
         category,
@@ -142,6 +146,11 @@ export default function Menu() {
                     </span>
                   )}
                 </div>
+                {item.description && (
+                  <p className="text-xs text-muted-foreground mb-3 italic">
+                    Ingredients: {item.description}
+                  </p>
+                )}
                 <div className="space-y-1">
                   {item.options.map((opt, i) => (
                     <div key={i} className="flex justify-between items-center text-sm bg-muted/30 p-1.5 px-3 rounded-md">
@@ -218,6 +227,11 @@ export default function Menu() {
             <div className="space-y-2">
               <Label>Item Name</Label>
               <Input placeholder="e.g. Sprouts Salad" value={name} onChange={e => setName(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Description / Ingredients</Label>
+              <Input placeholder="e.g. Sprouts, cucumber, carrot, onion, pomegranate, lemon" value={description} onChange={e => setDescription(e.target.value)} />
             </div>
 
             <div className="space-y-2">
