@@ -376,7 +376,7 @@ export default function SubReports() {
     let msg = `📢 *Prep List for ${tomorrowDayLabel}*\n\n`;
     
     prepGroups.forEach(g => {
-      const totalQty = g.customers.reduce((sum, item) => sum + (item.isPreorder ? item.qty : (item.qty || 1)), 0);
+      const totalQty = g.customers.reduce((sum, item) => sum + (item.qty || 1), 0);
       msg += `🥗 *${g.name}* (${totalQty} pack${totalQty !== 1 ? 's' : ''})\n`;
       g.customers.forEach((c: any) => {
         if (c.isPreorder) {
@@ -863,7 +863,7 @@ export default function SubReports() {
             // Accordion per active item (Salad or Package fallback)
             <Accordion type="multiple" defaultValue={[...prepGroups.map(g => g.id)]} className="w-full space-y-3">
               {prepGroups.map(g => {
-                const totalQty = g.customers.reduce((sum, item) => sum + (item.isPreorder ? item.qty : 1), 0);
+                const totalQty = g.customers.reduce((sum, item) => sum + (item.qty || 1), 0);
                 return (
                   <AccordionItem key={g.id} value={g.id} className="border border-border rounded-xl px-4 bg-card shadow-sm">
                     <AccordionTrigger className="hover:no-underline py-3">
