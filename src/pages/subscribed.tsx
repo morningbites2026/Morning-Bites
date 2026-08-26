@@ -382,7 +382,7 @@ export default function Subscribed() {
   // Customize tab fields
   const [customPkgIds, setCustomPkgIds] = useState<number[]>([]);
   const [customPkgFrequencies, setCustomPkgFrequencies] = useState<Record<number, number>>({});
-  const [editPkgFrequencies, setEditPkgFrequencies] = useState<Record<number, number>>({});
+  const [editSaladFrequenciesByCp, setEditSaladFrequenciesByCp] = useState<Record<number, Record<string, number>>>({});
   const [addPkgFrequencies, setAddPkgFrequencies] = useState<Record<number, number>>({});
   const [addPkgFrequency, setAddPkgFrequency] = useState<number>(1);
 
@@ -1178,17 +1178,17 @@ export default function Subscribed() {
     const instr: Record<number, string> = {};
     const saladDays: Record<number, number[]> = {};
     const saladScheds: Record<number, Record<number, number[]>> = {};
-    const freqs: Record<number, number> = {};
+    const freqs: Record<number, Record<string, number>> = {};
     cps.forEach(cp => {
       instr[cp.id] = cp.instruction || '';
       saladDays[cp.id] = cp.preferred_days || [];
       saladScheds[cp.id] = cp.salad_schedules || {};
-      freqs[cp.id] = cp.frequency ?? 1;
+      freqs[cp.id] = cp.salad_frequencies || {};
     });
     setEditInstructions(instr);
     setEditSaladDaysByCp(saladDays);
     setEditSaladSchedulesByCp(saladScheds);
-    setEditPkgFrequencies(freqs);
+    setEditSaladFrequenciesByCp(freqs);
   };
 
   const saveEdit = async () => {
@@ -1208,16 +1208,13 @@ export default function Subscribed() {
         const updates: Record<string, unknown> = {};
         if (editInstructions[cp.id] !== undefined) updates.instruction = editInstructions[cp.id];
         
-        const freq = editPkgFrequencies[cp.id];
-        if (freq !== undefined) {
-          updates.frequency = freq;
-          const pkg = packages.find(p => p.id === cp.package_id);
-          const pkgSaladOptions = getPackageSaladOptions(pkg);
-          const saladFrequencies: Record<string, number> = {};
-          pkgSaladOptions.forEach(opt => {
-            saladFrequencies[`${opt.id}:${opt.option}`] = freq;
-          });
-          updates.salad_frequencies = saladFrequencies;
+        const saladFreqs = editSaladFrequenciesByCp[cp.id];
+        if (saladFreqs !== undefined) {
+          updates.salad_frequencies = saladFreqs;
+          const values = Object.values(saladFreqs);
+          if (values.length > 0) {
+            updates.frequency = Math.max(...values);
+          }
         }
 
         const saladScheds = editSaladSchedulesByCp[cp.id];
@@ -2426,19 +2423,30 @@ export default function Subscribed() {
                     <div key={cp.id} className="p-3 rounded-xl border border-border bg-muted/10 space-y-2.5">
                       <div className="text-xs font-bold text-primary">{pkg?.name || 'Package'} ({cp.total - cp.used} left)</div>
 
-                      <div className="flex items-center gap-1.5 p-2 bg-muted/30 rounded-xl animate-in fade-in duration-200">
-                        <Label className="text-xs font-semibold">Frequency (Qty/Day):</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={editPkgFrequencies[cp.id] ?? cp.frequency ?? 1}
-                          onChange={e => {
-                            const val = Math.max(1, Number(e.target.value) || 1);
-                            setEditPkgFrequencies(prev => ({ ...prev, [cp.id]: val }));
-                          }}
-                          className="w-16 h-8 text-center bg-background"
-                        />
-                      </div>
+                      {getPackageSaladOptions(pkg).length === 0 && (
+                        <div className="flex items-center gap-1.5 p-2 bg-muted/30 rounded-xl animate-in fade-in duration-200">
+                          <Label className="text-xs font-semibold">Frequency (Qty/Day):</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={(editSaladFrequenciesByCp[cp.id] || {})['pkg'] ?? cp.frequency ?? 1}
+                            onChange={e => {
+                              const val = Math.max(1, Number(e.target.value) || 1);
+                              setEditSaladFrequenciesByCp(prev => {
+                                const cpFreqs = prev[cp.id] || {};
+                                return {
+                                  ...prev,
+                                  [cp.id]: {
+                                    ...cpFreqs,
+                                    'pkg': val
+                                  }
+                                };
+                              });
+                            }}
+                            className="w-16 h-8 text-center bg-background"
+                          />
+                        </div>
+                      )}
                       
                       {getPackageSaladOptions(pkg).length > 0 ? (
                         <div className="space-y-3">
@@ -2448,12 +2456,37 @@ export default function Subscribed() {
                             if (!item) return null;
                             const saladKey = `${opt.id}:${opt.option}`;
                             const saladDays = (editSaladSchedulesByCp[cp.id] || {})[saladKey] || [];
+                            const saladFreq = (editSaladFrequenciesByCp[cp.id] || {})[saladKey] ?? (cp.salad_frequencies && cp.salad_frequencies[saladKey]) ?? cp.frequency ?? 1;
                             const label = opt.option && opt.option.toLowerCase() !== 'regular'
                               ? `${item.name} – ${opt.option}`
                               : item.name;
                             return (
-                              <div key={`${cp.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30">
-                                <div className="text-[10px] font-bold text-emerald-800 dark:text-emerald-400">🥗 {label}</div>
+                              <div key={`${cp.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30">
+                                <div className="flex justify-between items-center">
+                                  <div className="text-[10px] font-bold text-emerald-800 dark:text-emerald-400">🥗 {label}</div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-400">Qty:</span>
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      value={saladFreq}
+                                      onChange={e => {
+                                        const val = Math.max(1, Number(e.target.value) || 1);
+                                        setEditSaladFrequenciesByCp(prev => {
+                                          const cpFreqs = prev[cp.id] || {};
+                                          return {
+                                            ...prev,
+                                            [cp.id]: {
+                                              ...cpFreqs,
+                                              [saladKey]: val
+                                            }
+                                          };
+                                        });
+                                      }}
+                                      className="w-12 h-6 text-center text-xs p-0 bg-background border border-emerald-200 rounded-md"
+                                    />
+                                  </div>
+                                </div>
                                 <div className="flex gap-1">
                                   {DAYS.map((day, idx) => {
                                     const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
@@ -2463,7 +2496,7 @@ export default function Subscribed() {
                                         type="button"
                                         onClick={() => toggleEditSaladScheduleDay(cp.id, saladKey, idx)}
                                         className={cn(
-                                          "flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition-all",
+                                          "flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer",
                                           isDaySelected
                                             ? 'bg-emerald-600 border-emerald-600 text-white font-bold'
                                             : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
