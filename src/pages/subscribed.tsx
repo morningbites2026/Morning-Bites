@@ -547,7 +547,10 @@ export default function Subscribed() {
   const getSelectedCp = (c: any): CustomerPackage | null => {
     const cps = getCustPacks(c.id);
     if (cps.length === 0) return null;
-    return cps.find(cp => cp.id === selectedCpId[c.id]) || cps[0];
+    const selected = cps.find(cp => cp.id === selectedCpId[c.id]);
+    if (selected) return selected;
+    const firstActive = cps.find(cp => cp.total - cp.used > 0 && cp.status === 'active');
+    return firstActive || cps[0];
   };
 
   const getDisplayData = (c: any) => {
