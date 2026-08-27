@@ -83,7 +83,15 @@ export default function Dashboard() {
     // 1. Modern customerPackages
     if (customerPackages && customerPackages.length > 0) {
       revenue += customerPackages
-        .filter(cp => cp.status !== 'cancelled' && cp.pack_start_date >= startISO && cp.pack_start_date <= endISO)
+        .filter(cp => {
+          if (cp.status === 'cancelled') return false;
+          if (cp.pack_start_date < startISO || cp.pack_start_date > endISO) return false;
+          
+          const cust = customers.find(c => c.id === Number(cp.customer_id));
+          if (!cust || cust.is_deleted) return false;
+          
+          return true;
+        })
         .reduce((sum, cp) => {
           const pkg = packages.find(p => p.id === cp.package_id);
           return sum + (pkg?.price || 0);
