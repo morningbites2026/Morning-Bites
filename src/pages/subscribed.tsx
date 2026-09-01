@@ -383,6 +383,8 @@ export default function Subscribed() {
   const [customPkgIds, setCustomPkgIds] = useState<number[]>([]);
   const [customPkgFrequencies, setCustomPkgFrequencies] = useState<Record<number, number>>({});
   const [editSaladFrequenciesByCp, setEditSaladFrequenciesByCp] = useState<Record<number, Record<string, number>>>({});
+  const [editTotalsByCp, setEditTotalsByCp] = useState<Record<number, number>>({});
+  const [editPricesByCp, setEditPricesByCp] = useState<Record<number, number>>({});
   const [addPkgFrequencies, setAddPkgFrequencies] = useState<Record<number, number>>({});
   const [addPkgFrequency, setAddPkgFrequency] = useState<number>(1);
 
@@ -549,22 +551,6 @@ export default function Subscribed() {
     });
   };
 
-  const toggleEditSaladDay = (cpId: number, dayIdx: number) => {
-    setEditSaladDaysByCp(prev => {
-      const current = prev[cpId] || [];
-      let next: number[];
-      if (current.length === 0) {
-        next = [0, 1, 2, 3, 4, 5].filter(d => d !== dayIdx);
-      } else if (current.includes(dayIdx)) {
-        next = current.filter(d => d !== dayIdx);
-        if (next.length === 6) next = [];
-      } else {
-        next = [...current, dayIdx].sort();
-        if (next.length === 6) next = [];
-      }
-      return { ...prev, [cpId]: next };
-    });
-  };
 
   const [historyModal, setHistoryModal] = useState<{ open: boolean; customer: any }>({ open: false, customer: null });
   const [historyLogs, setHistoryLogs] = useState<ActivityLog[]>([]);
@@ -1228,22 +1214,58 @@ export default function Subscribed() {
     const saladDays: Record<number, number[]> = {};
     const saladScheds: Record<number, Record<number, number[]>> = {};
     const freqs: Record<number, Record<string, number>> = {};
+    const totals: Record<number, number> = {};
+    const prices: Record<number, number> = {};
     cps.forEach(cp => {
       instr[cp.id] = cp.instruction || '';
       saladDays[cp.id] = cp.preferred_days || [];
       saladScheds[cp.id] = cp.salad_schedules || {};
       freqs[cp.id] = cp.salad_frequencies || {};
+      totals[cp.id] = cp.total;
+      const pkg = packages.find(p => p.id === cp.package_id);
+      const perMeal = pkg ? (pkg.price / (pkg.meals_count || 10)) : 0;
+      prices[cp.id] = pkg ? Math.round(cp.total * perMeal) : 0;
     });
     setEditInstructions(instr);
     setEditSaladDaysByCp(saladDays);
     setEditSaladSchedulesByCp(saladScheds);
     setEditSaladFrequenciesByCp(freqs);
+    setEditTotalsByCp(totals);
+    setEditPricesByCp(prices);
   };
 
   const saveEdit = async () => {
     const c = editModal.customer;
     if (!c) return;
     try {
+      const cps = getCustPacks(c.id);
+
+      // 1. Validation check for daily frequency multiples across edited packages
+      for (const cp of cps) {
+        const pkg = packages.find(p => p.id === cp.package_id);
+        const editedTotal = editTotalsByCp[cp.id] ?? cp.total;
+        const remaining = editedTotal - cp.used;
+        const cpSaladFreqs = editSaladFrequenciesByCp[cp.id] || cp.salad_frequencies || {};
+        let totalDailyFreq = 0;
+        const saladOpts = getPackageSaladOptions(pkg);
+        if (saladOpts.length > 0) {
+          saladOpts.forEach((opt: any) => {
+            const key = `${opt.id}:${opt.option}`;
+            totalDailyFreq += (cpSaladFreqs[key] ?? cp.frequency ?? 1);
+          });
+        } else {
+          totalDailyFreq = cpSaladFreqs['pkg'] ?? cp.frequency ?? 1;
+        }
+
+        if (totalDailyFreq > 0 && remaining > 0 && remaining % totalDailyFreq !== 0) {
+          toast({
+            variant: "destructive",
+            description: `Remaining meals (${remaining}) for ${pkg?.name || 'package'} must be a multiple of daily frequency (${totalDailyFreq} pack(s)/day)`
+          });
+          return;
+        }
+      }
+
       await dbUpd('customers', c.id, {
         name: editName, phone: editPhone,
         package_id: editPkg ? Number(editPkg) : null,
@@ -1251,10 +1273,17 @@ export default function Subscribed() {
       });
       const walkin = walkins.find(w => w.phone === c.phone || w.phone === editPhone);
       if (walkin) await dbUpd('walkins', walkin.id, { name: editName, phone: editPhone });
-      // Update instruction + preferred_days per customer_package in one call each
-      const cps = getCustPacks(c.id);
+      
+      let totalPriceDiff = 0;
       for (const cp of cps) {
+        const pkg = packages.find(p => p.id === cp.package_id);
+        const perMeal = pkg ? (pkg.price / (pkg.meals_count || 10)) : 0;
+        const origPrice = pkg ? Math.round(cp.total * perMeal) : 0;
+        const editedPrice = editPricesByCp[cp.id] ?? origPrice;
+        totalPriceDiff += (editedPrice - origPrice);
+
         const updates: Record<string, unknown> = {};
+        if (editTotalsByCp[cp.id] !== undefined) updates.total = editTotalsByCp[cp.id];
         if (editInstructions[cp.id] !== undefined) updates.instruction = editInstructions[cp.id];
         
         const saladFreqs = editSaladFrequenciesByCp[cp.id];
@@ -1269,7 +1298,6 @@ export default function Subscribed() {
         const saladScheds = editSaladSchedulesByCp[cp.id];
         if (saladScheds !== undefined) {
           updates.salad_schedules = saladScheds;
-          const pkg = packages.find(p => p.id === cp.package_id);
           const pkgSaladOptions = getPackageSaladOptions(pkg);
           const pkgSaladKeys = pkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
           updates.preferred_days = pkgSaladKeys.length > 0
@@ -1283,8 +1311,16 @@ export default function Subscribed() {
           await dbUpd('customer_packages', cp.id, updates);
         }
       }
-      await logActivity(c.id, 'edit', `Info updated: name=${editName}, phone=${editPhone}, mode=${editMode}`);
-      toast({ title: "Customer updated" });
+
+      let finMsg = "";
+      if (totalPriceDiff > 0) {
+        finMsg = `Collect ₹${totalPriceDiff} from customer`;
+      } else if (totalPriceDiff < 0) {
+        finMsg = `Refund ₹${Math.abs(totalPriceDiff)} to customer`;
+      }
+
+      await logActivity(c.id, 'edit', `Info updated: name=${editName}, phone=${editPhone}, mode=${editMode}${finMsg ? ` | ${finMsg}` : ''}`);
+      toast({ title: "Customer updated", description: finMsg || undefined });
       setEditModal({ open: false, customer: null });
       refresh();
     } catch (err: any) {
@@ -2484,13 +2520,64 @@ export default function Subscribed() {
                 <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Per Package Settings</Label>
                 {getCustPacks(editModal.customer.id).filter(cp => cp.total - cp.used > 0).map(cp => {
                   const pkg = packages.find(p => p.id === cp.package_id);
-                  const saladDays = editSaladDaysByCp[cp.id] || [];
-                  return (
-                    <div key={cp.id} className="p-3 rounded-xl border border-border bg-muted/10 space-y-2.5">
-                      <div className="text-xs font-bold text-primary">{pkg?.name || 'Package'} ({cp.total - cp.used} left)</div>
+                  const used = cp.used;
+                  const currentTotal = editTotalsByCp[cp.id] ?? cp.total;
+                  const remainingMeals = currentTotal - used;
 
+                  // Calculate total daily frequency for cp
+                  const cpSaladFreqs = editSaladFrequenciesByCp[cp.id] || cp.salad_frequencies || {};
+                  let totalDailyFreq = 0;
+                  const saladOpts = getPackageSaladOptions(pkg);
+                  if (saladOpts.length > 0) {
+                    saladOpts.forEach((opt: any) => {
+                      const key = `${opt.id}:${opt.option}`;
+                      totalDailyFreq += (cpSaladFreqs[key] ?? cp.frequency ?? 1);
+                    });
+                  } else {
+                    totalDailyFreq = cpSaladFreqs['pkg'] ?? cp.frequency ?? 1;
+                  }
+
+                  const isMultipleInvalid = totalDailyFreq > 0 && remainingMeals > 0 && (remainingMeals % totalDailyFreq !== 0);
+
+                  // Financial calculations
+                  const perMealPrice = pkg ? (pkg.price / (pkg.meals_count || 10)) : 0;
+                  const origPrice = pkg ? Math.round(cp.total * perMealPrice) : 0;
+                  const editedPrice = editPricesByCp[cp.id] ?? origPrice;
+                  const priceDiff = editedPrice - origPrice;
+
+                  return (
+                    <div key={cp.id} className="p-3.5 rounded-2xl border border-border bg-card shadow-xs space-y-3">
+                      {/* Header: Package Name & Editable Total Meals */}
+                      <div className="flex justify-between items-center gap-2 p-2.5 bg-muted/40 rounded-xl border border-border/60">
+                        <div>
+                          <div className="text-xs font-bold text-primary">{pkg?.name || 'Package'}</div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">
+                            Meals used so far: <strong className="text-foreground font-bold">{used} meals</strong>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="space-y-0.5 text-right">
+                            <Label className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Total Meals</Label>
+                            <Input
+                              type="number"
+                              min={used + 1}
+                              value={currentTotal}
+                              onChange={e => {
+                                const val = Math.max(used, Number(e.target.value) || used);
+                                setEditTotalsByCp(prev => ({ ...prev, [cp.id]: val }));
+                                if (pkg) {
+                                  setEditPricesByCp(prev => ({ ...prev, [cp.id]: Math.round(val * perMealPrice) }));
+                                }
+                              }}
+                              className={cn("w-20 h-7 text-center text-xs font-bold bg-background", isMultipleInvalid && "border-destructive focus-visible:ring-destructive")}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Associated Salads or Package Frequency */}
                       {getPackageSaladOptions(pkg).length === 0 && (
-                        <div className="flex items-center gap-1.5 p-2 bg-muted/30 rounded-xl animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between p-2.5 bg-muted/20 rounded-xl border border-border/50">
                           <Label className="text-xs font-semibold">Frequency (Qty/Day):</Label>
                           <Input
                             type="number"
@@ -2498,25 +2585,19 @@ export default function Subscribed() {
                             value={(editSaladFrequenciesByCp[cp.id] || {})['pkg'] ?? cp.frequency ?? 1}
                             onChange={e => {
                               const val = Math.max(1, Number(e.target.value) || 1);
-                              setEditSaladFrequenciesByCp(prev => {
-                                const cpFreqs = prev[cp.id] || {};
-                                return {
-                                  ...prev,
-                                  [cp.id]: {
-                                    ...cpFreqs,
-                                    'pkg': val
-                                  }
-                                };
-                              });
+                              setEditSaladFrequenciesByCp(prev => ({
+                                ...prev,
+                                [cp.id]: { ...(prev[cp.id] || {}), 'pkg': val }
+                              }));
                             }}
-                            className="w-16 h-8 text-center bg-background"
+                            className="w-16 h-7 text-center text-xs font-bold bg-background"
                           />
                         </div>
                       )}
-                      
-                      {getPackageSaladOptions(pkg).length > 0 ? (
-                        <div className="space-y-3">
-                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
+
+                      {getPackageSaladOptions(pkg).length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Schedules & Daily Frequency)</div>
                           {getPackageSaladOptions(pkg).map((opt: any, optIdx: number) => {
                             const item = menuItems.find(mi => mi.id === opt.id);
                             if (!item) return null;
@@ -2531,25 +2612,19 @@ export default function Subscribed() {
                                 <div className="flex justify-between items-center">
                                   <div className="text-[10px] font-bold text-emerald-800 dark:text-emerald-400">🥗 {label}</div>
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-400">Qty:</span>
+                                    <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-400">Qty/Day:</span>
                                     <Input
                                       type="number"
                                       min="1"
                                       value={saladFreq}
                                       onChange={e => {
                                         const val = Math.max(1, Number(e.target.value) || 1);
-                                        setEditSaladFrequenciesByCp(prev => {
-                                          const cpFreqs = prev[cp.id] || {};
-                                          return {
-                                            ...prev,
-                                            [cp.id]: {
-                                              ...cpFreqs,
-                                              [saladKey]: val
-                                            }
-                                          };
-                                        });
+                                        setEditSaladFrequenciesByCp(prev => ({
+                                          ...prev,
+                                          [cp.id]: { ...(prev[cp.id] || {}), [saladKey]: val }
+                                        }));
                                       }}
-                                      className="w-12 h-6 text-center text-xs p-0 bg-background border border-emerald-200 rounded-md"
+                                      className="w-12 h-6 text-center text-xs p-0 font-bold bg-background border border-emerald-200 rounded-md"
                                     />
                                   </div>
                                 </div>
@@ -2580,38 +2655,74 @@ export default function Subscribed() {
                             );
                           })}
                         </div>
-                      ) : (
-                        /* Fallback to package-level Salad Days picker if no associated salads */
-                        <div className="space-y-1.5">
-                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Salad Days</div>
-                          <div className="flex gap-1">
-                            {DAYS.map((day, idx) => {
-                              const isSelected = saladDays.length === 0 || saladDays.includes(idx);
-                              return (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => toggleEditSaladDay(cp.id, idx)}
-                                  className={cn(
-                                    "flex-1 py-1.5 rounded-lg text-[10px] font-bold border-2 transition-all",
-                                    isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/40'
-                                  )}
-                                >
-                                  {day[0]}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {saladDays.length === 0 ? 'All days (Mon–Sat)' : `${saladDays.length} day${saladDays.length > 1 ? 's' : ''} selected`}
-                          </div>
+                      )}
+
+                      {/* Remaining Meals & Duration Summary */}
+                      {totalDailyFreq > 0 && (
+                        <div className="text-xs">
+                          {isMultipleInvalid ? (
+                            <div className="p-2.5 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive font-semibold space-y-0.5 animate-in fade-in duration-200">
+                              <div>⚠️ Remaining meals ({remainingMeals}) must be a multiple of daily frequency ({totalDailyFreq} pack(s)/day).</div>
+                              <div className="text-[10px] font-normal text-destructive/80">
+                                Suggested Total Meals: {used + (Math.ceil(Math.max(1, remainingMeals) / totalDailyFreq) * totalDailyFreq)} (for {Math.ceil(Math.max(1, remainingMeals) / totalDailyFreq)} days remaining)
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-900/40 rounded-xl text-emerald-800 dark:text-emerald-300 flex justify-between items-center animate-in fade-in duration-200">
+                              <span>📦 Remaining: <strong className="font-bold">{remainingMeals} meals</strong> ({totalDailyFreq} pack(s)/day)</span>
+                              <span className="font-bold">Duration: {remainingMeals / totalDailyFreq} days left</span>
+                            </div>
+                          )}
                         </div>
                       )}
+
+                      {/* Financial Settlement Impact Section */}
+                      <div className="p-3 bg-muted/20 rounded-xl border border-border/80 space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <Label className="font-semibold text-muted-foreground">Updated Package Price (₹):</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={editedPrice}
+                            onChange={e => {
+                              const val = Math.max(0, Number(e.target.value) || 0);
+                              setEditPricesByCp(prev => ({ ...prev, [cp.id]: val }));
+                            }}
+                            className="w-24 h-7 text-center text-xs font-bold bg-background"
+                          />
+                        </div>
+
+                        {priceDiff > 0 && (
+                          <div className="p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-xl text-blue-900 dark:text-blue-200 text-xs space-y-1 animate-in fade-in duration-200">
+                            <div className="font-bold flex items-center gap-1.5 text-blue-700 dark:text-blue-400">
+                              💳 Business Needs to Charge Customer
+                            </div>
+                            <div>Collect <strong className="font-bold text-blue-700 dark:text-blue-400">₹{priceDiff}</strong> extra from customer (Updated Price: ₹{editedPrice}, Originally Charged: ₹{origPrice}).</div>
+                          </div>
+                        )}
+
+                        {priceDiff < 0 && (
+                          <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl text-amber-900 dark:text-amber-200 text-xs space-y-1 animate-in fade-in duration-200">
+                            <div className="font-bold flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                              💵 Business Needs to Refund Customer
+                            </div>
+                            <div>Refund / Pay <strong className="font-bold text-amber-700 dark:text-amber-400">₹{Math.abs(priceDiff)}</strong> back to customer (Updated Price: ₹{editedPrice}, Originally Charged: ₹{origPrice}).</div>
+                          </div>
+                        )}
+
+                        {priceDiff === 0 && (
+                          <div className="text-[10px] text-muted-foreground italic text-right">
+                            No price adjustment required (Price: ₹{origPrice}).
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Instruction Input */}
                       <Input
                         placeholder="e.g. No onions, extra sprouts..."
                         value={editInstructions[cp.id] || ''}
                         onChange={e => setEditInstructions(prev => ({ ...prev, [cp.id]: e.target.value }))}
-                        className="h-9 rounded-lg text-sm"
+                        className="h-8 rounded-lg text-xs"
                       />
                     </div>
                   );
