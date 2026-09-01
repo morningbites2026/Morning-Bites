@@ -1941,7 +1941,7 @@ export default function Subscribed() {
 
       {/* ─── Add Customer Modal ─────────────────────────────────────────────── */}
       <Dialog open={addModal} onOpenChange={v => { setAddModal(v); if (!v) { setAddQrOpen(false); setIsRenewalMode(false); setAddType("existing"); setAddCustomSaladDays({}); setCustomPkgIds([]); setCustomPkgFrequencies({}); setAddPkgFrequencies({}); setCustomSaladSchedules({}); setCustomMealsCount("10"); setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true); } }}>
-        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md w-[95%] max-w-full rounded-3xl p-6 max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">
               {isRenewalMode ? `Renew — ${addName}` : 'Add Subscriber'}
@@ -2234,7 +2234,7 @@ export default function Subscribed() {
 
       {/* ─── Notify Modal ───────────────────────────────────────────────────── */}
       <Dialog open={notifyModal.open} onOpenChange={o => !o && setNotifyModal({ ...notifyModal, open: false })}>
-        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6">
+        <DialogContent className="sm:max-w-md w-[95%] max-w-full rounded-3xl p-6 overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">Send Notification</DialogTitle>
           </DialogHeader>
@@ -2270,7 +2270,7 @@ export default function Subscribed() {
 
       {/* ─── Meal Used WhatsApp Prompt ───────────────────────────────────────── */}
       <Dialog open={mealUsedModal.open} onOpenChange={o => !o && setMealUsedModal({ open: false, customer: null, used: 0, total: 0, pkgName: '', qty: 1 })}>
-        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6">
+        <DialogContent className="sm:max-w-md w-[95%] max-w-full rounded-3xl p-6 overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">Meal Marked Used ✓</DialogTitle>
           </DialogHeader>
@@ -2295,7 +2295,7 @@ export default function Subscribed() {
 
       {/* ─── Skip Modal ─────────────────────────────────────────────────────── */}
       <Dialog open={skipModal.open} onOpenChange={o => { if (!o) { setSkipModal({ open: false, customer: null, cp: null }); setSkipMode('single'); setSkipMultiDates([]); } }}>
-        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md w-[95%] max-w-full rounded-3xl p-6 max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">Skip Meal — {skipModal.customer?.name}</DialogTitle>
           </DialogHeader>
@@ -2469,7 +2469,7 @@ export default function Subscribed() {
 
       {/* ─── Edit Modal ─────────────────────────────────────────────────────── */}
       <Dialog open={editModal.open} onOpenChange={o => !o && setEditModal({ ...editModal, open: false })}>
-        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md w-[95%] max-w-full rounded-3xl p-6 max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif">Edit Subscriber</DialogTitle>
           </DialogHeader>
@@ -2485,8 +2485,8 @@ export default function Subscribed() {
             <div className="space-y-2">
               <Label>Primary Package</Label>
               <Select value={editPkg} onValueChange={setEditPkg}>
-                <SelectTrigger className="h-12 rounded-xl">
-                  <SelectValue placeholder="Select package" />
+                <SelectTrigger className="h-12 rounded-xl w-full max-w-full overflow-hidden">
+                  <SelectValue placeholder="Select package" className="truncate" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -2548,10 +2548,10 @@ export default function Subscribed() {
                   return (
                     <div key={cp.id} className="p-3.5 rounded-2xl border border-border bg-card shadow-xs space-y-3">
                       {/* Header: Package Name & Editable Total Meals */}
-                      <div className="flex justify-between items-center gap-2 p-2.5 bg-muted/40 rounded-xl border border-border/60">
-                        <div>
-                          <div className="text-xs font-bold text-primary">{pkg?.name || 'Package'}</div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">
+                      <div className="flex justify-between items-center gap-2 p-2.5 bg-muted/40 rounded-xl border border-border/60 min-w-0 max-w-full">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-primary truncate">{pkg?.name || 'Package'}</div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
                             Meals used so far: <strong className="text-foreground font-bold">{used} meals</strong>
                           </div>
                         </div>
@@ -2957,7 +2957,7 @@ export default function Subscribed() {
 
       {/* ─── Instructions Modal ─────────────────────────────────────────────── */}
       <Dialog open={instrModal.open} onOpenChange={o => !o && setInstrModal({ open: false, customer: null })}>
-        <DialogContent className="sm:max-w-md w-[95%] rounded-3xl p-6 max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md w-[95%] max-w-full rounded-3xl p-6 max-h-[80vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="text-xl font-serif flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-500" /> Instructions — {instrModal.customer?.name}
