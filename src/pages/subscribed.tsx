@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useStore } from "@/lib/store";
 import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package } from "@/lib/supabase";
@@ -408,6 +408,45 @@ export default function Subscribed() {
   const [customPayMode, setCustomPayMode] = useState<"cash" | "upi" | "scanpay">("cash");
   const [customIsActive, setCustomIsActive] = useState<boolean>(true);
 
+  const totalCustomDailyFreq = useMemo(() => {
+    let sum = 0;
+    customPkgIds.forEach(id => {
+      sum += (customPkgFrequencies[id] || 1);
+    });
+    return sum;
+  }, [customPkgIds, customPkgFrequencies]);
+
+  const customMealsCountNum = Number(customMealsCount) || 0;
+  const isCustomMealsInvalid = useMemo(() => {
+    if (addType !== 'customize' || customPkgIds.length === 0) return false;
+    if (totalCustomDailyFreq <= 0 || customMealsCountNum <= 0) return false;
+    return customMealsCountNum % totalCustomDailyFreq !== 0;
+  }, [addType, customPkgIds.length, totalCustomDailyFreq, customMealsCountNum]);
+
+  useEffect(() => {
+    if (addType !== 'customize' || customPkgIds.length === 0) return;
+    let totalFreq = 0;
+    customPkgIds.forEach(id => {
+      totalFreq += (customPkgFrequencies[id] || 1);
+    });
+    const meals = Number(customMealsCount) || 0;
+    if (totalFreq > 0 && meals > 0 && meals % totalFreq === 0) {
+      const days = meals / totalFreq;
+      let calcPrice = 0;
+      customPkgIds.forEach(id => {
+        const pkg = packages.find(p => p.id === id);
+        if (pkg) {
+          const freq = customPkgFrequencies[id] || 1;
+          const baseP = pkg.price || 0;
+          const baseM = pkg.meals_count ?? 10;
+          const perMeal = baseP / (baseM || 10);
+          calcPrice += days * freq * perMeal;
+        }
+      });
+      setCustomPrice(Math.round(calcPrice).toString());
+    }
+  }, [customPkgIds, customPkgFrequencies, customMealsCount, packages, addType]);
+
   const saladMenuItems = useMemo(() => {
     return menuItems.filter(m => m.type === 'salad' && m.is_active);
   }, [menuItems]);
@@ -618,6 +657,13 @@ export default function Subscribed() {
       }
       if (!customMealsCount.trim() || Number(customMealsCount) <= 0) {
         toast({ variant: "destructive", description: "Number of meals must be greater than 0" });
+        return;
+      }
+      if (totalCustomDailyFreq > 0 && customMealsCountNum % totalCustomDailyFreq !== 0) {
+        toast({
+          variant: "destructive",
+          description: `Total meals must be a multiple of ${totalCustomDailyFreq} (e.g. ${totalCustomDailyFreq}, ${totalCustomDailyFreq * 2}, ${totalCustomDailyFreq * 3}, ${totalCustomDailyFreq * 4}...)`
+        });
         return;
       }
       if (!customPrice.trim() || Number(customPrice) < 0) {
@@ -2026,7 +2072,7 @@ export default function Subscribed() {
                           placeholder="e.g. 10"
                           value={customMealsCount}
                           onChange={e => setCustomMealsCount(e.target.value.replace(/[^0-9]/g, ''))}
-                          className="h-12 rounded-xl"
+                          className={cn("h-12 rounded-xl", isCustomMealsInvalid && "border-destructive focus-visible:ring-destructive")}
                         />
                       </div>
                       <div className="space-y-2">
@@ -2040,6 +2086,23 @@ export default function Subscribed() {
                         />
                       </div>
                     </div>
+
+                    {addType === 'customize' && customPkgIds.length > 0 && totalCustomDailyFreq > 0 && (
+                      <div className="text-xs -mt-2">
+                        {isCustomMealsInvalid ? (
+                          <div className="text-destructive font-semibold flex items-center gap-1.5 p-2.5 bg-destructive/10 rounded-xl border border-destructive/20 animate-in fade-in duration-200">
+                            <span>⚠️ Total meals must be a multiple of {totalCustomDailyFreq} (e.g. {totalCustomDailyFreq}, {totalCustomDailyFreq * 2}, {totalCustomDailyFreq * 3}, {totalCustomDailyFreq * 4}...)</span>
+                          </div>
+                        ) : (
+                          <div className="text-muted-foreground flex items-center justify-between p-2.5 bg-muted/30 rounded-xl animate-in fade-in duration-200">
+                            <span>Daily frequency: <strong className="text-foreground">{totalCustomDailyFreq} pack(s)/day</strong></span>
+                            {customMealsCountNum > 0 && (
+                              <span className="font-medium text-emerald-700 dark:text-emerald-400">Duration: {customMealsCountNum / totalCustomDailyFreq} days</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <Label>Payment Mode</Label>
