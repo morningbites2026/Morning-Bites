@@ -178,6 +178,7 @@ export interface CustomerPackage {
   frequency?: number;
   salad_frequencies?: Record<string, number>;
   schedule_mode?: 'set_schedule' | 'default';
+  start_salad_key?: string;
   created_at: string;
 }
 
@@ -187,6 +188,11 @@ export function getScheduleMode(cp?: CustomerPackage | null): 'set_schedule' | '
     return 'default';
   }
   return 'set_schedule';
+}
+
+export function getStartingSaladKey(cp?: CustomerPackage | null): string | undefined {
+  if (!cp) return undefined;
+  return cp.start_salad_key || (cp.salad_schedules as any)?.start_salad_key;
 }
 
 export interface ActivityLog {

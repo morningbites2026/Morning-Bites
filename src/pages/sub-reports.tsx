@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TrendingUp, Package, Users, UserPlus, RefreshCw, CheckCircle2, Utensils, CalendarCheck, DollarSign, Calendar, ChevronDown, ChevronUp, Share2 } from "lucide-react";
-import { dbGet, ActivityLog, Package as DbPackage, getScheduleMode } from "@/lib/supabase";
+import { dbGet, ActivityLog, Package as DbPackage, getScheduleMode, getStartingSaladKey } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 
 function getISTTomorrowISO(): string {
@@ -490,7 +490,13 @@ export default function SubReports() {
               if (isScheduled) {
                 const freq = cp.frequency || 1;
                 const deliveryIndex = Math.floor(cp.used / freq);
-                const rotatedSaladIdx = deliveryIndex % pkgSaladOptions.length;
+                const startSaladKey = getStartingSaladKey(cp);
+                let startIdx = 0;
+                if (startSaladKey) {
+                  const foundIdx = pkgSaladOptions.findIndex((opt: any) => `${opt.id}:${opt.option}` === startSaladKey);
+                  if (foundIdx >= 0) startIdx = foundIdx;
+                }
+                const rotatedSaladIdx = (deliveryIndex + startIdx) % pkgSaladOptions.length;
                 const opt = pkgSaladOptions[rotatedSaladIdx];
                 if (opt) {
                   const saladKey = `${opt.id}:${opt.option}`;

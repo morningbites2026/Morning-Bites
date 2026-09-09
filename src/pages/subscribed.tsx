@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useStore } from "@/lib/store";
-import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package, getScheduleMode } from "@/lib/supabase";
+import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package, getScheduleMode, getStartingSaladKey } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -216,7 +216,13 @@ export default function Subscribed() {
               if (isScheduled) {
                 const freq = cp.frequency || 1;
                 const deliveryIndex = Math.floor(cp.used / freq);
-                const rotatedSaladIdx = deliveryIndex % pkgSaladOptions.length;
+                const startSaladKey = getStartingSaladKey(cp);
+                let startIdx = 0;
+                if (startSaladKey) {
+                  const foundIdx = pkgSaladOptions.findIndex((opt: any) => `${opt.id}:${opt.option}` === startSaladKey);
+                  if (foundIdx >= 0) startIdx = foundIdx;
+                }
+                const rotatedSaladIdx = (deliveryIndex + startIdx) % pkgSaladOptions.length;
                 const opt = pkgSaladOptions[rotatedSaladIdx];
                 if (opt) {
                   const saladKey = `${opt.id}:${opt.option}`;
@@ -424,6 +430,10 @@ export default function Subscribed() {
   const [customScheduleMode, setCustomScheduleMode] = useState<'set_schedule' | 'default'>('set_schedule');
   const [addPkgScheduleMode, setAddPkgScheduleMode] = useState<'set_schedule' | 'default'>('set_schedule');
   const [editScheduleModesByCp, setEditScheduleModesByCp] = useState<Record<number, 'set_schedule' | 'default'>>({});
+  const [addPkgStartSaladKeys, setAddPkgStartSaladKeys] = useState<Record<number, string>>({});
+  const [customStartSaladKey, setCustomStartSaladKey] = useState<string>("");
+  const [addPkgStartSaladKey, setAddPkgStartSaladKey] = useState<string>("");
+  const [editStartSaladKeysByCp, setEditStartSaladKeysByCp] = useState<Record<number, string>>({});
 
   // Customize tab fields
   const [customPkgIds, setCustomPkgIds] = useState<number[]>([]);
@@ -793,7 +803,8 @@ export default function Subscribed() {
           });
         });
 
-        const customSaladSchedsWithMode = { ...customSaladSchedules, schedule_mode: customScheduleMode };
+        const customStartSalad = customStartSaladKey || customSaladKeys[0];
+        const customSaladSchedsWithMode = { ...customSaladSchedules, schedule_mode: customScheduleMode, start_salad_key: customStartSalad };
         await dbIns('customer_packages', {
           customer_id: custId,
           package_id: newPkg.id,
@@ -807,6 +818,7 @@ export default function Subscribed() {
           preferred_days: customPkgSaladDays,
           salad_schedules: customSaladSchedsWithMode,
           schedule_mode: customScheduleMode,
+          start_salad_key: customStartSalad,
           frequency: 1,
           salad_frequencies: saladFrequencies,
         });
@@ -845,8 +857,9 @@ export default function Subscribed() {
         if (custId) {
           for (const pkg of selectedAddPkgs) {
             const mode = addPkgScheduleModes[pkg.id] || 'set_schedule';
-            const saladScheds = { ...(addSaladSchedules[pkg.id] || {}), schedule_mode: mode };
             const pkgSaladOptions = getPackageSaladOptions(pkg);
+            const startSalad = addPkgStartSaladKeys[pkg.id] || (pkgSaladOptions.length > 0 ? `${pkgSaladOptions[0].id}:${pkgSaladOptions[0].option}` : undefined);
+            const saladScheds = { ...(addSaladSchedules[pkg.id] || {}), schedule_mode: mode, ...(startSalad ? { start_salad_key: startSalad } : {}) };
             const pkgSaladKeys = pkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
             const pkgSaladDays = pkgSaladKeys.length > 0
               ? getUnionOfSchedules(saladScheds, pkgSaladKeys)
@@ -871,6 +884,7 @@ export default function Subscribed() {
               preferred_days: pkgSaladDays,
               salad_schedules: saladScheds,
               schedule_mode: mode,
+              ...(startSalad ? { start_salad_key: startSalad } : {}),
               frequency: freq,
               salad_frequencies: saladFrequencies,
             });
@@ -891,6 +905,7 @@ export default function Subscribed() {
       setCustomPkgIds([]); setCustomPkgFrequencies({}); setAddPkgFrequencies({}); setCustomSaladSchedules({}); setCustomMealsCount("10");
       setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true);
       setAddPkgScheduleModes({}); setCustomScheduleMode('set_schedule'); setAddPkgScheduleMode('set_schedule');
+      setAddPkgStartSaladKeys({}); setCustomStartSaladKey(""); setAddPkgStartSaladKey(""); setEditStartSaladKeysByCp({});
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -930,7 +945,8 @@ export default function Subscribed() {
         saladFrequencies[`${opt.id}:${opt.option}`] = freq;
       });
 
-      const addPkgSaladSchedsWithMode = { ...addPkgSaladSchedules, schedule_mode: addPkgScheduleMode };
+      const startSalad = addPkgStartSaladKey || (pkgSaladOptions.length > 0 ? `${pkgSaladOptions[0].id}:${pkgSaladOptions[0].option}` : undefined);
+      const addPkgSaladSchedsWithMode = { ...addPkgSaladSchedules, schedule_mode: addPkgScheduleMode, ...(startSalad ? { start_salad_key: startSalad } : {}) };
       await dbIns('customer_packages', {
         customer_id: c.id,
         package_id: Number(addPkgPkgId),
@@ -944,6 +960,7 @@ export default function Subscribed() {
         instruction: addPkgInstruction,
         salad_schedules: addPkgSaladSchedsWithMode,
         schedule_mode: addPkgScheduleMode,
+        ...(startSalad ? { start_salad_key: startSalad } : {}),
         frequency: freq,
         salad_frequencies: saladFrequencies,
       });
@@ -956,6 +973,7 @@ export default function Subscribed() {
       setAddPkgSaladDays([]); setAddPkgInstruction(""); setAddPkgSaladSchedules({});
       setAddPkgFrequency(1);
       setAddPkgScheduleMode('set_schedule');
+      setAddPkgStartSaladKey("");
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -1271,6 +1289,7 @@ export default function Subscribed() {
     const totals: Record<number, number> = {};
     const prices: Record<number, number> = {};
     const modes: Record<number, 'set_schedule' | 'default'> = {};
+    const startKeys: Record<number, string> = {};
     cps.forEach(cp => {
       instr[cp.id] = cp.instruction || '';
       saladDays[cp.id] = cp.preferred_days || [];
@@ -1278,6 +1297,7 @@ export default function Subscribed() {
       freqs[cp.id] = cp.salad_frequencies || {};
       totals[cp.id] = cp.total;
       modes[cp.id] = getScheduleMode(cp);
+      startKeys[cp.id] = getStartingSaladKey(cp) || '';
       const pkg = packages.find(p => p.id === cp.package_id);
       const perMeal = pkg ? (pkg.price / (pkg.meals_count || 10)) : 0;
       prices[cp.id] = pkg ? Math.round(cp.total * perMeal) : 0;
@@ -1289,6 +1309,7 @@ export default function Subscribed() {
     setEditTotalsByCp(totals);
     setEditPricesByCp(prices);
     setEditScheduleModesByCp(modes);
+    setEditStartSaladKeysByCp(startKeys);
   };
 
   const saveEdit = async () => {
@@ -1346,6 +1367,12 @@ export default function Subscribed() {
         const curMode = editScheduleModesByCp[cp.id] ?? getScheduleMode(cp);
         updates.schedule_mode = curMode;
 
+        const pkgSaladOptions = getPackageSaladOptions(pkg);
+        const editStartSalad = editStartSaladKeysByCp[cp.id] || (pkgSaladOptions.length > 0 ? `${pkgSaladOptions[0].id}:${pkgSaladOptions[0].option}` : undefined);
+        if (editStartSalad) {
+          updates.start_salad_key = editStartSalad;
+        }
+
         const saladFreqs = editSaladFrequenciesByCp[cp.id];
         if (saladFreqs !== undefined) {
           updates.salad_frequencies = saladFreqs;
@@ -1356,10 +1383,9 @@ export default function Subscribed() {
         }
 
         const saladScheds = editSaladSchedulesByCp[cp.id] !== undefined ? editSaladSchedulesByCp[cp.id] : (cp.salad_schedules || {});
-        const updatedScheds = { ...saladScheds, schedule_mode: curMode };
+        const updatedScheds = { ...saladScheds, schedule_mode: curMode, ...(editStartSalad ? { start_salad_key: editStartSalad } : {}) };
         updates.salad_schedules = updatedScheds;
         
-        const pkgSaladOptions = getPackageSaladOptions(pkg);
         const pkgSaladKeys = pkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
         updates.preferred_days = pkgSaladKeys.length > 0
           ? getUnionOfSchedules(updatedScheds, pkgSaladKeys)
@@ -1518,11 +1544,40 @@ export default function Subscribed() {
                   </button>
                 </div>
                 {addPkgScheduleModes[p.id] === 'default' && (
-                  <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium pt-0.5">
-                    Subscriber receives a different salad on each delivery day in sequence ({pkgSaladOptions.map(opt => {
-                      const item = menuItems.find(mi => mi.id === opt.id);
-                      return item ? item.name : `Salad ${opt.id}`;
-                    }).join(' → ')}).
+                  <div className="space-y-1.5 pt-0.5">
+                    <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
+                      Subscriber receives a different salad on each delivery day in sequence ({pkgSaladOptions.map(opt => {
+                        const item = menuItems.find(mi => mi.id === opt.id);
+                        return item ? item.name : `Salad ${opt.id}`;
+                      }).join(' → ')}).
+                    </div>
+                    {pkgSaladOptions.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        <Label className="text-[11px] font-bold text-blue-900 dark:text-blue-300">Start Rotation With:</Label>
+                        <Select
+                          value={addPkgStartSaladKeys[p.id] || `${pkgSaladOptions[0].id}:${pkgSaladOptions[0].option}`}
+                          onValueChange={val => setAddPkgStartSaladKeys(prev => ({ ...prev, [p.id]: val }))}
+                        >
+                          <SelectTrigger className="h-8 text-xs bg-background border-blue-200 dark:border-blue-800">
+                            <SelectValue placeholder="Select starting salad" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pkgSaladOptions.map((opt: any) => {
+                              const item = menuItems.find(mi => mi.id === opt.id);
+                              const key = `${opt.id}:${opt.option}`;
+                              const label = opt.option && opt.option.toLowerCase() !== 'regular'
+                                ? `${item?.name || `Salad ${opt.id}`} – ${opt.option}`
+                                : (item?.name || `Salad ${opt.id}`);
+                              return (
+                                <SelectItem key={key} value={key} className="text-xs">
+                                  🥗 {label}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1910,7 +1965,13 @@ export default function Subscribed() {
                             const opts = getPackageSaladOptions(xpkg);
                             if (opts.length === 0) return 'Salad';
                             const freq = cp?.frequency || 1;
-                            const rotatedIdx = Math.floor((cp?.used || 0) / freq) % opts.length;
+                            const startSaladKey = getStartingSaladKey(cp);
+                            let startIdx = 0;
+                            if (startSaladKey) {
+                              const foundIdx = opts.findIndex((opt: any) => `${opt.id}:${opt.option}` === startSaladKey);
+                              if (foundIdx >= 0) startIdx = foundIdx;
+                            }
+                            const rotatedIdx = (Math.floor((cp?.used || 0) / freq) + startIdx) % opts.length;
                             const opt = opts[rotatedIdx];
                             const item = menuItems.find(mi => mi.id === opt.id);
                             return item ? `${item.name}${opt.option && opt.option.toLowerCase() !== 'regular' ? ` – ${opt.option}` : ''}` : 'Salad';
@@ -2214,8 +2275,34 @@ export default function Subscribed() {
                               </button>
                             </div>
                             {customScheduleMode === 'default' && (
-                              <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium pt-0.5">
-                                Subscriber receives a different salad on each delivery day in sequence.
+                              <div className="space-y-1.5 pt-0.5">
+                                <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
+                                  Subscriber receives a different salad on each delivery day in sequence.
+                                </div>
+                                {customSaladKeys.length > 0 && (
+                                  <div className="space-y-1 pt-1">
+                                    <Label className="text-[11px] font-bold text-blue-900 dark:text-blue-300">Start Rotation With:</Label>
+                                    <Select
+                                      value={customStartSaladKey || customSaladKeys[0]}
+                                      onValueChange={val => setCustomStartSaladKey(val)}
+                                    >
+                                      <SelectTrigger className="h-8 text-xs bg-background border-blue-200 dark:border-blue-800">
+                                        <SelectValue placeholder="Select starting salad" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {customSaladKeys.map(key => {
+                                          const sv = saladVariants.find(x => `${x.id}:${x.option}` === key || `${x.id}:Regular` === key);
+                                          const name = sv ? sv.name : `Salad ${key.split(':')[0]}`;
+                                          return (
+                                            <SelectItem key={key} value={key} className="text-xs">
+                                              🥗 {name}
+                                            </SelectItem>
+                                          );
+                                        })}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -2790,8 +2877,37 @@ export default function Subscribed() {
                                 </button>
                               </div>
                               {(editScheduleModesByCp[cp.id] ?? getScheduleMode(cp)) === 'default' && (
-                                <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium pt-0.5">
-                                  Subscriber receives a different salad on each delivery day in sequence.
+                                <div className="space-y-1.5 pt-0.5">
+                                  <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
+                                    Subscriber receives a different salad on each delivery day in sequence.
+                                  </div>
+                                  {getPackageSaladOptions(pkg).length > 0 && (
+                                    <div className="space-y-1 pt-1">
+                                      <Label className="text-[11px] font-bold text-blue-900 dark:text-blue-300">Start Rotation With:</Label>
+                                      <Select
+                                        value={editStartSaladKeysByCp[cp.id] || getStartingSaladKey(cp) || `${getPackageSaladOptions(pkg)[0].id}:${getPackageSaladOptions(pkg)[0].option}`}
+                                        onValueChange={val => setEditStartSaladKeysByCp(prev => ({ ...prev, [cp.id]: val }))}
+                                      >
+                                        <SelectTrigger className="h-8 text-xs bg-background border-blue-200 dark:border-blue-800">
+                                          <SelectValue placeholder="Select starting salad" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {getPackageSaladOptions(pkg).map((opt: any) => {
+                                            const item = menuItems.find(mi => mi.id === opt.id);
+                                            const key = `${opt.id}:${opt.option}`;
+                                            const label = opt.option && opt.option.toLowerCase() !== 'regular'
+                                              ? `${item?.name || `Salad ${opt.id}`} – ${opt.option}`
+                                              : (item?.name || `Salad ${opt.id}`);
+                                            return (
+                                              <SelectItem key={key} value={key} className="text-xs">
+                                                🥗 {label}
+                                              </SelectItem>
+                                            );
+                                          })}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -3061,8 +3177,37 @@ export default function Subscribed() {
                           </button>
                         </div>
                         {addPkgScheduleMode === 'default' && (
-                          <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium pt-0.5">
-                            Subscriber receives a different salad on each delivery day in sequence.
+                          <div className="space-y-1.5 pt-0.5">
+                            <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
+                              Subscriber receives a different salad on each delivery day in sequence.
+                            </div>
+                            {selectedAddPkgPkg && getPackageSaladOptions(selectedAddPkgPkg).length > 0 && (
+                              <div className="space-y-1 pt-1">
+                                <Label className="text-[11px] font-bold text-blue-900 dark:text-blue-300">Start Rotation With:</Label>
+                                <Select
+                                  value={addPkgStartSaladKey || `${getPackageSaladOptions(selectedAddPkgPkg)[0].id}:${getPackageSaladOptions(selectedAddPkgPkg)[0].option}`}
+                                  onValueChange={val => setAddPkgStartSaladKey(val)}
+                                >
+                                  <SelectTrigger className="h-8 text-xs bg-background border-blue-200 dark:border-blue-800">
+                                    <SelectValue placeholder="Select starting salad" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {getPackageSaladOptions(selectedAddPkgPkg).map((opt: any) => {
+                                      const item = menuItems.find(mi => mi.id === opt.id);
+                                      const key = `${opt.id}:${opt.option}`;
+                                      const label = opt.option && opt.option.toLowerCase() !== 'regular'
+                                        ? `${item?.name || `Salad ${opt.id}`} – ${opt.option}`
+                                        : (item?.name || `Salad ${opt.id}`);
+                                      return (
+                                        <SelectItem key={key} value={key} className="text-xs">
+                                          🥗 {label}
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
