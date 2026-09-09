@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useStore } from "@/lib/store";
-import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package } from "@/lib/supabase";
+import { dbUpd, dbIns, dbUpdWhere, logActivity, getActivityLogs, formatIST, formatISTDate, getISTISODate, ActivityLog, UPI_ID, CustomerPackage, Package, getScheduleMode } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -89,12 +89,12 @@ const buildRenewalMsgMulti = (name: string, pkgs: Package[], startDate: string) 
   const totalMeals = pkgs.reduce((s, p) => s + (p.meals_count ?? 10), 0);
   return `Hello ${name},\n\nYour subscriptions have been renewed!\n\n🔄 Renewal\n📦 Packages:\n${pkgsList}\n\n🍽️ Total meals: ${totalMeals}\n💰 Total amount: ₹${totalPrice}\n📅 Start date: ${startDate}\n\nEnjoy fresh food daily!\n✅ Healthy • Hygienic • Tasty\n\n⏰ 6:30 AM to 9:00 AM\n📞 9099172237 / 9429929822\n\nSee you tomorrow morning!`;
 };
-const getUnionOfSchedules = (saladScheds: Record<string, number[]>, saladKeys: string[]) => {
+const getUnionOfSchedules = (saladScheds: Record<string, any>, saladKeys: string[]) => {
   if (!saladKeys || saladKeys.length === 0) return [];
   let hasAllDays = false;
   const unionSet = new Set<number>();
   for (const key of saladKeys) {
-    const sched = saladScheds[key] || [];
+    const sched = (Array.isArray(saladScheds[key]) ? saladScheds[key] : []) as number[];
     if (sched.length === 0) {
       hasAllDays = true;
       break;
@@ -147,9 +147,17 @@ export default function Subscribed() {
         const custPacks = customerPackages.filter(cp => Number(cp.customer_id) === c.id && cp.status === 'active');
         isScheduledForAnyPack = custPacks.some(cp => {
           if (cp.used >= cp.total) return false;
+
+          const mode = getScheduleMode(cp);
+          if (mode === 'default') {
+            const cpPrefDays = cp.preferred_days;
+            const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null && cpPrefDays.length > 0) ? cpPrefDays : (c.preferred_days || []);
+            return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
+          }
           
           if (cp.salad_schedules && Object.keys(cp.salad_schedules).length > 0) {
-            return Object.values(cp.salad_schedules).some((days: number[]) => {
+            return Object.values(cp.salad_schedules).some((days: any) => {
+              if (!Array.isArray(days)) return false;
               return days.length === 0 || days.includes(tomorrowDayIdx);
             });
           }
@@ -200,32 +208,66 @@ export default function Subscribed() {
 
           const pkgSaladOptions = getPackageSaladOptions(pkg);
           if (pkgSaladOptions.length > 0) {
-            pkgSaladOptions.forEach((opt: any) => {
-              const saladKey = `${opt.id}:${opt.option}`;
-              const saladSched = cp.salad_schedules || {};
-              const days = saladSched[saladKey] || [];
-              const isScheduled = days.length === 0 || days.includes(tomorrowDayIdx);
+            const mode = getScheduleMode(cp);
+            if (mode === 'default') {
+              const cpPrefDays = cp.preferred_days;
+              const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null && cpPrefDays.length > 0) ? cpPrefDays : (c.preferred_days || []);
+              const isScheduled = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
               if (isScheduled) {
-                const saladItem = menuItems.find(mi => mi.id === opt.id);
-                const baseName = saladItem ? saladItem.name : `Salad ID ${opt.id}`;
-                const name = opt.option && opt.option.toLowerCase() !== 'regular'
-                  ? `${baseName} – ${opt.option}`
-                  : baseName;
-                const groupId = `salad-${saladKey}`;
-                if (!groupMap.has(groupId)) {
-                  groupMap.set(groupId, { id: groupId, name, type: 'salad', customers: [] });
+                const freq = cp.frequency || 1;
+                const deliveryIndex = Math.floor(cp.used / freq);
+                const rotatedSaladIdx = deliveryIndex % pkgSaladOptions.length;
+                const opt = pkgSaladOptions[rotatedSaladIdx];
+                if (opt) {
+                  const saladKey = `${opt.id}:${opt.option}`;
+                  const saladItem = menuItems.find(mi => mi.id === opt.id);
+                  const baseName = saladItem ? saladItem.name : `Salad ID ${opt.id}`;
+                  const name = opt.option && opt.option.toLowerCase() !== 'regular'
+                    ? `${baseName} – ${opt.option}`
+                    : baseName;
+                  const groupId = `salad-${saladKey}`;
+                  if (!groupMap.has(groupId)) {
+                    groupMap.set(groupId, { id: groupId, name, type: 'salad', customers: [] });
+                  }
+                  groupMap.get(groupId)!.customers.push({
+                    isPreorder: false,
+                    customer: c,
+                    cp,
+                    instruction: cp.instruction || '',
+                    used: cp.used,
+                    total: cp.total,
+                    qty: freq
+                  });
                 }
-                groupMap.get(groupId)!.customers.push({
-                  isPreorder: false,
-                  customer: c,
-                  cp,
-                  instruction: cp.instruction || '',
-                  used: cp.used,
-                  total: cp.total,
-                  qty: (cp.salad_frequencies && cp.salad_frequencies[saladKey]) || cp.frequency || 1
-                });
               }
-            });
+            } else {
+              pkgSaladOptions.forEach((opt: any) => {
+                const saladKey = `${opt.id}:${opt.option}`;
+                const saladSched = cp.salad_schedules || {};
+                const days = saladSched[saladKey] || [];
+                const isScheduled = days.length === 0 || days.includes(tomorrowDayIdx);
+                if (isScheduled) {
+                  const saladItem = menuItems.find(mi => mi.id === opt.id);
+                  const baseName = saladItem ? saladItem.name : `Salad ID ${opt.id}`;
+                  const name = opt.option && opt.option.toLowerCase() !== 'regular'
+                    ? `${baseName} – ${opt.option}`
+                    : baseName;
+                  const groupId = `salad-${saladKey}`;
+                  if (!groupMap.has(groupId)) {
+                    groupMap.set(groupId, { id: groupId, name, type: 'salad', customers: [] });
+                  }
+                  groupMap.get(groupId)!.customers.push({
+                    isPreorder: false,
+                    customer: c,
+                    cp,
+                    instruction: cp.instruction || '',
+                    used: cp.used,
+                    total: cp.total,
+                    qty: (cp.salad_frequencies && cp.salad_frequencies[saladKey]) || cp.frequency || 1
+                  });
+                }
+              });
+            }
           } else {
             // Fallback for package without salads
             const cpPrefDays = cp.preferred_days;
@@ -378,6 +420,10 @@ export default function Subscribed() {
   const [addType, setAddType] = useState<'existing' | 'customize'>('existing');
   const [addCustomSaladDays, setAddCustomSaladDays] = useState<Record<number, number[]>>({});
   const [addSaladSchedules, setAddSaladSchedules] = useState<Record<number, Record<string, number[]>>>({});
+  const [addPkgScheduleModes, setAddPkgScheduleModes] = useState<Record<number, 'set_schedule' | 'default'>>({});
+  const [customScheduleMode, setCustomScheduleMode] = useState<'set_schedule' | 'default'>('set_schedule');
+  const [addPkgScheduleMode, setAddPkgScheduleMode] = useState<'set_schedule' | 'default'>('set_schedule');
+  const [editScheduleModesByCp, setEditScheduleModesByCp] = useState<Record<number, 'set_schedule' | 'default'>>({});
 
   // Customize tab fields
   const [customPkgIds, setCustomPkgIds] = useState<number[]>([]);
@@ -747,6 +793,7 @@ export default function Subscribed() {
           });
         });
 
+        const customSaladSchedsWithMode = { ...customSaladSchedules, schedule_mode: customScheduleMode };
         await dbIns('customer_packages', {
           customer_id: custId,
           package_id: newPkg.id,
@@ -758,7 +805,8 @@ export default function Subscribed() {
           renew_count: existingCust ? existingCust.renew_count + 1 : 0,
           instruction: addInstructions[newPkg.id] || '',
           preferred_days: customPkgSaladDays,
-          salad_schedules: customSaladSchedules,
+          salad_schedules: customSaladSchedsWithMode,
+          schedule_mode: customScheduleMode,
           frequency: 1,
           salad_frequencies: saladFrequencies,
         });
@@ -796,7 +844,8 @@ export default function Subscribed() {
 
         if (custId) {
           for (const pkg of selectedAddPkgs) {
-            const saladScheds = addSaladSchedules[pkg.id] || {};
+            const mode = addPkgScheduleModes[pkg.id] || 'set_schedule';
+            const saladScheds = { ...(addSaladSchedules[pkg.id] || {}), schedule_mode: mode };
             const pkgSaladOptions = getPackageSaladOptions(pkg);
             const pkgSaladKeys = pkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
             const pkgSaladDays = pkgSaladKeys.length > 0
@@ -821,6 +870,7 @@ export default function Subscribed() {
               instruction: addInstructions[pkg.id] || '',
               preferred_days: pkgSaladDays,
               salad_schedules: saladScheds,
+              schedule_mode: mode,
               frequency: freq,
               salad_frequencies: saladFrequencies,
             });
@@ -840,6 +890,7 @@ export default function Subscribed() {
       setAddType("existing"); setAddCustomSaladDays({});
       setCustomPkgIds([]); setCustomPkgFrequencies({}); setAddPkgFrequencies({}); setCustomSaladSchedules({}); setCustomMealsCount("10");
       setCustomPrice(""); setCustomPayMode("cash"); setCustomIsActive(true);
+      setAddPkgScheduleModes({}); setCustomScheduleMode('set_schedule'); setAddPkgScheduleMode('set_schedule');
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -879,6 +930,7 @@ export default function Subscribed() {
         saladFrequencies[`${opt.id}:${opt.option}`] = freq;
       });
 
+      const addPkgSaladSchedsWithMode = { ...addPkgSaladSchedules, schedule_mode: addPkgScheduleMode };
       await dbIns('customer_packages', {
         customer_id: c.id,
         package_id: Number(addPkgPkgId),
@@ -890,7 +942,8 @@ export default function Subscribed() {
         renew_count: 0,
         preferred_days: pkgSaladDays,
         instruction: addPkgInstruction,
-        salad_schedules: addPkgSaladSchedules,
+        salad_schedules: addPkgSaladSchedsWithMode,
+        schedule_mode: addPkgScheduleMode,
         frequency: freq,
         salad_frequencies: saladFrequencies,
       });
@@ -902,6 +955,7 @@ export default function Subscribed() {
       setAddPkgPkgId(""); setAddPkgPayMode("cash"); setAddPkgCash("");
       setAddPkgSaladDays([]); setAddPkgInstruction(""); setAddPkgSaladSchedules({});
       setAddPkgFrequency(1);
+      setAddPkgScheduleMode('set_schedule');
       refresh();
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -1216,12 +1270,14 @@ export default function Subscribed() {
     const freqs: Record<number, Record<string, number>> = {};
     const totals: Record<number, number> = {};
     const prices: Record<number, number> = {};
+    const modes: Record<number, 'set_schedule' | 'default'> = {};
     cps.forEach(cp => {
       instr[cp.id] = cp.instruction || '';
       saladDays[cp.id] = cp.preferred_days || [];
       saladScheds[cp.id] = cp.salad_schedules || {};
       freqs[cp.id] = cp.salad_frequencies || {};
       totals[cp.id] = cp.total;
+      modes[cp.id] = getScheduleMode(cp);
       const pkg = packages.find(p => p.id === cp.package_id);
       const perMeal = pkg ? (pkg.price / (pkg.meals_count || 10)) : 0;
       prices[cp.id] = pkg ? Math.round(cp.total * perMeal) : 0;
@@ -1232,6 +1288,7 @@ export default function Subscribed() {
     setEditSaladFrequenciesByCp(freqs);
     setEditTotalsByCp(totals);
     setEditPricesByCp(prices);
+    setEditScheduleModesByCp(modes);
   };
 
   const saveEdit = async () => {
@@ -1286,6 +1343,9 @@ export default function Subscribed() {
         if (editTotalsByCp[cp.id] !== undefined) updates.total = editTotalsByCp[cp.id];
         if (editInstructions[cp.id] !== undefined) updates.instruction = editInstructions[cp.id];
         
+        const curMode = editScheduleModesByCp[cp.id] ?? getScheduleMode(cp);
+        updates.schedule_mode = curMode;
+
         const saladFreqs = editSaladFrequenciesByCp[cp.id];
         if (saladFreqs !== undefined) {
           updates.salad_frequencies = saladFreqs;
@@ -1295,17 +1355,15 @@ export default function Subscribed() {
           }
         }
 
-        const saladScheds = editSaladSchedulesByCp[cp.id];
-        if (saladScheds !== undefined) {
-          updates.salad_schedules = saladScheds;
-          const pkgSaladOptions = getPackageSaladOptions(pkg);
-          const pkgSaladKeys = pkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
-          updates.preferred_days = pkgSaladKeys.length > 0
-            ? getUnionOfSchedules(saladScheds, pkgSaladKeys)
-            : (editSaladDaysByCp[cp.id] || []);
-        } else if (editSaladDaysByCp[cp.id] !== undefined) {
-          updates.preferred_days = editSaladDaysByCp[cp.id];
-        }
+        const saladScheds = editSaladSchedulesByCp[cp.id] !== undefined ? editSaladSchedulesByCp[cp.id] : (cp.salad_schedules || {});
+        const updatedScheds = { ...saladScheds, schedule_mode: curMode };
+        updates.salad_schedules = updatedScheds;
+        
+        const pkgSaladOptions = getPackageSaladOptions(pkg);
+        const pkgSaladKeys = pkgSaladOptions.map(opt => `${opt.id}:${opt.option}`);
+        updates.preferred_days = pkgSaladKeys.length > 0
+          ? getUnionOfSchedules(updatedScheds, pkgSaladKeys)
+          : (editSaladDaysByCp[cp.id] || []);
 
         if (Object.keys(updates).length > 0) {
           await dbUpd('customer_packages', cp.id, updates);
@@ -1429,52 +1487,95 @@ export default function Subscribed() {
               />
             </div>
 
+            {/* Schedule Option selector for Combo or multi-salad packages */}
+            {(p.package_type === 'combo' || pkgSaladOptions.length > 1) && (
+              <div className="space-y-2 p-2.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                <div className="text-[10px] font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wider">Schedule Option</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAddPkgScheduleModes(prev => ({ ...prev, [p.id]: 'set_schedule' }))}
+                    className={cn(
+                      "py-1.5 px-2 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer",
+                      (addPkgScheduleModes[p.id] || 'set_schedule') === 'set_schedule'
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                        : 'bg-background border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600'
+                    )}
+                  >
+                    📅 Set Schedule
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddPkgScheduleModes(prev => ({ ...prev, [p.id]: 'default' }))}
+                    className={cn(
+                      "py-1.5 px-2 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer",
+                      addPkgScheduleModes[p.id] === 'default'
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                        : 'bg-background border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600'
+                    )}
+                  >
+                    🔄 Default (Rotating)
+                  </button>
+                </div>
+                {addPkgScheduleModes[p.id] === 'default' && (
+                  <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium pt-0.5">
+                    Subscriber receives a different salad on each delivery day in sequence ({pkgSaladOptions.map(opt => {
+                      const item = menuItems.find(mi => mi.id === opt.id);
+                      return item ? item.name : `Salad ${opt.id}`;
+                    }).join(' → ')}).
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Display Associated Salads with Individual schedules */}
             {pkgSaladOptions.length > 0 ? (
-              <div className="space-y-3">
-                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
-                {pkgSaladOptions.map((opt: any, optIdx: number) => {
-                  const item = menuItems.find(mi => mi.id === opt.id);
-                  if (!item) return null;
-                  const saladKey = `${opt.id}:${opt.option}`;
-                  const saladDays = (addSaladSchedules[p.id] || {})[saladKey] || [];
-                  const label = opt.option && opt.option.toLowerCase() !== 'regular'
-                    ? `${item.name} – ${opt.option}`
-                    : item.name;
-                  return (
-                    <div key={`${p.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30">
-                      <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400 flex items-center justify-between">
-                        <span>🥗 {label}</span>
+              addPkgScheduleModes[p.id] === 'default' ? null : (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
+                  {pkgSaladOptions.map((opt: any, optIdx: number) => {
+                    const item = menuItems.find(mi => mi.id === opt.id);
+                    if (!item) return null;
+                    const saladKey = `${opt.id}:${opt.option}`;
+                    const saladDays = (addSaladSchedules[p.id] || {})[saladKey] || [];
+                    const label = opt.option && opt.option.toLowerCase() !== 'regular'
+                      ? `${item.name} – ${opt.option}`
+                      : item.name;
+                    return (
+                      <div key={`${p.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30">
+                        <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400 flex items-center justify-between">
+                          <span>🥗 {label}</span>
+                        </div>
+                        <div className="flex gap-1">
+                          {DAYS.map((day, idx) => {
+                            const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => toggleSaladScheduleDay(p.id, saladKey, idx)}
+                                className={cn(
+                                  "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                  isDaySelected
+                                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                                    : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                                )}
+                              >
+                                {day[0]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="text-[9px] text-muted-foreground">
+                          {saladDays.length === 0
+                            ? 'All days (Mon–Sat) — tap a day to exclude it'
+                            : `${saladDays.length} day(s) selected`}
+                        </div>
                       </div>
-                      <div className="flex gap-1">
-                        {DAYS.map((day, idx) => {
-                          const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
-                          return (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={() => toggleSaladScheduleDay(p.id, saladKey, idx)}
-                              className={cn(
-                                "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
-                                isDaySelected
-                                  ? 'bg-emerald-600 border-emerald-600 text-white'
-                                  : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
-                              )}
-                            >
-                              {day[0]}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="text-[9px] text-muted-foreground">
-                        {saladDays.length === 0
-                          ? 'All days (Mon–Sat) — tap a day to exclude it'
-                          : `${saladDays.length} day(s) selected`}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )
             ) : (
               /* Fallback to package-level Salad Days picker if no associated salads */
               <div className="space-y-1.5">
@@ -1743,7 +1844,14 @@ export default function Subscribed() {
 
                   <div className="bg-card rounded-xl border border-border overflow-hidden">
                     <div className="flex justify-between items-center px-3 py-2 bg-muted/30 border-b border-border">
-                      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Schedule</div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Schedule</div>
+                        {getScheduleMode(cp) === 'default' && (
+                          <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-full border border-blue-200/60">
+                            🔄 Default (Rotating)
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1 bg-background rounded-lg border border-border">
                         <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => setWeekOffset(p => ({ ...p, [c.id]: offset - 1 }))}>
                           <ChevronLeft className="w-3 h-3" />
@@ -1793,6 +1901,23 @@ export default function Subscribed() {
                         );
                       })}
                     </div>
+                    {getScheduleMode(cp) === 'default' && (
+                      <div className="px-3 pb-2 text-[10px] text-blue-700 dark:text-blue-400 font-medium flex items-center gap-1">
+                        <span>🔄 Rotating Sequence: Next delivery → </span>
+                        <strong className="text-foreground font-bold">
+                          {(() => {
+                            const xpkg = packages.find(p => p.id === cp?.package_id);
+                            const opts = getPackageSaladOptions(xpkg);
+                            if (opts.length === 0) return 'Salad';
+                            const freq = cp?.frequency || 1;
+                            const rotatedIdx = Math.floor((cp?.used || 0) / freq) % opts.length;
+                            const opt = opts[rotatedIdx];
+                            const item = menuItems.find(mi => mi.id === opt.id);
+                            return item ? `${item.name}${opt.option && opt.option.toLowerCase() !== 'regular' ? ` – ${opt.option}` : ''}` : 'Salad';
+                          })()}
+                        </strong>
+                      </div>
+                    )}
                     {mealSkips.some(s => Number(s.customer_id) === c.id && !s.unskipped) && (
                       <div className="px-3 pb-2 text-[10px] text-orange-600 font-medium">
                         Tap orange day to remove skip
@@ -2059,44 +2184,82 @@ export default function Subscribed() {
                     {customSaladKeys.length > 0 && (
                       <div className="space-y-2.5">
                         <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Configure Salad Delivery Schedules</Label>
-                        <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-                          {customSaladKeys.map(key => {
-                            const sv = saladVariants.find(x => `${x.id}:${x.option}` === key || `${x.id}:Regular` === key);
-                            const name = sv ? sv.name : `Salad ${key.split(':')[0]}`;
-                            const saladDays = customSaladSchedules[key] || [];
-                            return (
-                              <div key={key} className="p-2.5 bg-emerald-50/50 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30 space-y-2">
-                                <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400">🥗 {name}</div>
-                                <div className="flex gap-1">
-                                  {DAYS.map((day, idx) => {
-                                    const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
-                                    return (
-                                      <button
-                                        key={idx}
-                                        type="button"
-                                        onClick={() => toggleCustomSaladScheduleDay(key, idx)}
-                                        className={cn(
-                                          "flex-1 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
-                                          isDaySelected
-                                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                                            : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
-                                        )}
-                                        style={{ minWidth: 0 }}
-                                      >
-                                        {day[0]}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                                <div className="text-[9px] text-muted-foreground">
-                                  {saladDays.length === 0
-                                    ? 'All days (Mon–Sat) — tap a day to exclude it'
-                                    : `${saladDays.length} day(s) selected`}
-                                </div>
+                        {customSaladKeys.length > 1 && (
+                          <div className="space-y-2 p-2.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                            <div className="text-[10px] font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wider">Schedule Option</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setCustomScheduleMode('set_schedule')}
+                                className={cn(
+                                  "py-1.5 px-2 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer",
+                                  customScheduleMode === 'set_schedule'
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                    : 'bg-background border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600'
+                                )}
+                              >
+                                📅 Set Schedule
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCustomScheduleMode('default')}
+                                className={cn(
+                                  "py-1.5 px-2 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer",
+                                  customScheduleMode === 'default'
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                    : 'bg-background border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600'
+                                )}
+                              >
+                                🔄 Default (Rotating)
+                              </button>
+                            </div>
+                            {customScheduleMode === 'default' && (
+                              <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium pt-0.5">
+                                Subscriber receives a different salad on each delivery day in sequence.
                               </div>
-                            );
-                          })}
-                        </div>
+                            )}
+                          </div>
+                        )}
+                        {customScheduleMode !== 'default' && (
+                          <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                            {customSaladKeys.map(key => {
+                              const sv = saladVariants.find(x => `${x.id}:${x.option}` === key || `${x.id}:Regular` === key);
+                              const name = sv ? sv.name : `Salad ${key.split(':')[0]}`;
+                              const saladDays = customSaladSchedules[key] || [];
+                              return (
+                                <div key={key} className="p-2.5 bg-emerald-50/50 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30 space-y-2">
+                                  <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400">🥗 {name}</div>
+                                  <div className="flex gap-1">
+                                    {DAYS.map((day, idx) => {
+                                      const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                                      return (
+                                        <button
+                                          key={idx}
+                                          type="button"
+                                          onClick={() => toggleCustomSaladScheduleDay(key, idx)}
+                                          className={cn(
+                                            "flex-1 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                            isDaySelected
+                                              ? 'bg-emerald-600 border-emerald-600 text-white'
+                                              : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                                          )}
+                                          style={{ minWidth: 0 }}
+                                        >
+                                          {day[0]}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="text-[9px] text-muted-foreground">
+                                    {saladDays.length === 0
+                                      ? 'All days (Mon–Sat) — tap a day to exclude it'
+                                      : `${saladDays.length} day(s) selected`}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -2597,7 +2760,46 @@ export default function Subscribed() {
 
                       {getPackageSaladOptions(pkg).length > 0 && (
                         <div className="space-y-2">
-                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Schedules & Daily Frequency)</div>
+                          {(pkg?.package_type === 'combo' || getPackageSaladOptions(pkg).length > 1) && (
+                            <div className="space-y-2 p-2.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                              <div className="text-[10px] font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wider">Schedule Option</div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditScheduleModesByCp(prev => ({ ...prev, [cp.id]: 'set_schedule' }))}
+                                  className={cn(
+                                    "py-1.5 px-2 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer",
+                                    (editScheduleModesByCp[cp.id] ?? getScheduleMode(cp)) === 'set_schedule'
+                                      ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                      : 'bg-background border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600'
+                                  )}
+                                >
+                                  📅 Set Schedule
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditScheduleModesByCp(prev => ({ ...prev, [cp.id]: 'default' }))}
+                                  className={cn(
+                                    "py-1.5 px-2 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer",
+                                    (editScheduleModesByCp[cp.id] ?? getScheduleMode(cp)) === 'default'
+                                      ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                      : 'bg-background border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600'
+                                  )}
+                                >
+                                  🔄 Default (Rotating)
+                                </button>
+                              </div>
+                              {(editScheduleModesByCp[cp.id] ?? getScheduleMode(cp)) === 'default' && (
+                                <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium pt-0.5">
+                                  Subscriber receives a different salad on each delivery day in sequence.
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                            Associated Salads (Daily Frequency{(editScheduleModesByCp[cp.id] ?? getScheduleMode(cp)) === 'set_schedule' ? ' & Schedules' : ''})
+                          </div>
                           {getPackageSaladOptions(pkg).map((opt: any, optIdx: number) => {
                             const item = menuItems.find(mi => mi.id === opt.id);
                             if (!item) return null;
@@ -2607,6 +2809,7 @@ export default function Subscribed() {
                             const label = opt.option && opt.option.toLowerCase() !== 'regular'
                               ? `${item.name} – ${opt.option}`
                               : item.name;
+                            const isDefaultMode = (editScheduleModesByCp[cp.id] ?? getScheduleMode(cp)) === 'default';
                             return (
                               <div key={`${cp.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30">
                                 <div className="flex justify-between items-center">
@@ -2628,29 +2831,33 @@ export default function Subscribed() {
                                     />
                                   </div>
                                 </div>
-                                <div className="flex gap-1">
-                                  {DAYS.map((day, idx) => {
-                                    const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
-                                    return (
-                                      <button
-                                        key={idx}
-                                        type="button"
-                                        onClick={() => toggleEditSaladScheduleDay(cp.id, saladKey, idx)}
-                                        className={cn(
-                                          "flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer",
-                                          isDaySelected
-                                            ? 'bg-emerald-600 border-emerald-600 text-white font-bold'
-                                            : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
-                                        )}
-                                      >
-                                        {day[0]}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                                <div className="text-[9px] text-muted-foreground">
-                                  {saladDays.length === 0 ? 'All days (Mon–Sat)' : `${saladDays.length} day(s) selected`}
-                                </div>
+                                {!isDefaultMode && (
+                                  <>
+                                    <div className="flex gap-1">
+                                      {DAYS.map((day, idx) => {
+                                        const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                                        return (
+                                          <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => toggleEditSaladScheduleDay(cp.id, saladKey, idx)}
+                                            className={cn(
+                                              "flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer",
+                                              isDaySelected
+                                                ? 'bg-emerald-600 border-emerald-600 text-white font-bold'
+                                                : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                                            )}
+                                          >
+                                            {day[0]}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="text-[9px] text-muted-foreground">
+                                      {saladDays.length === 0 ? 'All days (Mon–Sat)' : `${saladDays.length} day(s) selected`}
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             );
                           })}
@@ -2823,50 +3030,90 @@ export default function Subscribed() {
                       />
                     </div>
 
+                    {/* Schedule Option selector for Combo or multi-salad packages */}
+                    {selectedAddPkgPkg && (selectedAddPkgPkg.package_type === 'combo' || getPackageSaladOptions(selectedAddPkgPkg).length > 1) && (
+                      <div className="space-y-2 p-2.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                        <div className="text-[10px] font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wider">Schedule Option</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAddPkgScheduleMode('set_schedule')}
+                            className={cn(
+                              "py-1.5 px-2 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer",
+                              addPkgScheduleMode === 'set_schedule'
+                                ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                : 'bg-background border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600'
+                            )}
+                          >
+                            📅 Set Schedule
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAddPkgScheduleMode('default')}
+                            className={cn(
+                              "py-1.5 px-2 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer",
+                              addPkgScheduleMode === 'default'
+                                ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                : 'bg-background border-border text-muted-foreground hover:border-blue-300 hover:text-blue-600'
+                            )}
+                          >
+                            🔄 Default (Rotating)
+                          </button>
+                        </div>
+                        {addPkgScheduleMode === 'default' && (
+                          <div className="text-[10px] text-blue-700 dark:text-blue-400 font-medium pt-0.5">
+                            Subscriber receives a different salad on each delivery day in sequence.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Display Associated Salads with Individual schedules */}
                     {getPackageSaladOptions(selectedAddPkgPkg).length > 0 ? (
-                      <div className="space-y-3">
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
-                        {getPackageSaladOptions(selectedAddPkgPkg).map((opt: any, optIdx: number) => {
-                          const item = menuItems.find(mi => mi.id === opt.id);
-                          if (!item) return null;
-                          const saladKey = `${opt.id}:${opt.option}`;
-                          const saladDays = addPkgSaladSchedules[saladKey] || [];
-                          const label = opt.option && opt.option.toLowerCase() !== 'regular'
-                            ? `${item.name} – ${opt.option}`
-                            : item.name;
-                          return (
-                            <div key={`${selectedAddPkgPkg.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30 animate-in fade-in duration-200">
-                              <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400">🥗 {label}</div>
-                              <div className="flex gap-1">
-                                {DAYS.map((day, idx) => {
-                                  const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
-                                  return (
-                                    <button
-                                      key={idx}
-                                      type="button"
-                                      onClick={() => toggleAddPkgSaladScheduleDay(saladKey, idx)}
-                                      className={cn(
-                                        "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
-                                        isDaySelected
-                                          ? 'bg-emerald-600 border-emerald-600 text-white'
-                                          : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
-                                      )}
-                                    >
-                                      {day[0]}
-                                    </button>
-                                  );
-                                })}
+                      addPkgScheduleMode === 'default' ? null : (
+                        <div className="space-y-3">
+                          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Associated Salads (Delivery Schedules)</div>
+                          {getPackageSaladOptions(selectedAddPkgPkg).map((opt: any, optIdx: number) => {
+                            const item = menuItems.find(mi => mi.id === opt.id);
+                            if (!item) return null;
+                            const saladKey = `${opt.id}:${opt.option}`;
+                            const saladDays = addPkgSaladSchedules[saladKey] || [];
+                            const label = opt.option && opt.option.toLowerCase() !== 'regular'
+                              ? `${item.name} – ${opt.option}`
+                              : item.name;
+                            return (
+                              <div key={`${selectedAddPkgPkg.id}-${saladKey}-${optIdx}`} className="space-y-1.5 p-2.5 bg-emerald-50/40 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-900/30 animate-in fade-in duration-200">
+                                <div className="text-xs font-bold text-emerald-800 dark:text-emerald-400">🥗 {label}</div>
+                                <div className="flex gap-1">
+                                  {DAYS.map((day, idx) => {
+                                    const isDaySelected = saladDays.length === 0 || saladDays.includes(idx);
+                                    return (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => toggleAddPkgSaladScheduleDay(saladKey, idx)}
+                                        className={cn(
+                                          "flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                                          isDaySelected
+                                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                                            : 'border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-600 bg-background'
+                                        )}
+                                      >
+                                        {day[0]}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div className="text-[9px] text-muted-foreground">
+                                  {saladDays.length === 0
+                                    ? 'All days (Mon–Sat) — tap a day to exclude it'
+                                    : `${saladDays.length} day(s) selected`}
+                                </div>
                               </div>
-                              <div className="text-[9px] text-muted-foreground">
-                                {saladDays.length === 0
-                                  ? 'All days (Mon–Sat) — tap a day to exclude it'
-                                  : `${saladDays.length} day(s) selected`}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      )
                     ) : (
                       /* Fallback to package-level Salad Days picker if no associated salads */
                       <div className="space-y-1.5">

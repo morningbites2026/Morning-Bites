@@ -177,7 +177,16 @@ export interface CustomerPackage {
   salad_schedules?: Record<string, number[]>;
   frequency?: number;
   salad_frequencies?: Record<string, number>;
+  schedule_mode?: 'set_schedule' | 'default';
   created_at: string;
+}
+
+export function getScheduleMode(cp?: CustomerPackage | null): 'set_schedule' | 'default' {
+  if (!cp) return 'set_schedule';
+  if (cp.schedule_mode === 'default' || (cp.salad_schedules as any)?.schedule_mode === 'default') {
+    return 'default';
+  }
+  return 'set_schedule';
 }
 
 export interface ActivityLog {
