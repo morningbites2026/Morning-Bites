@@ -411,7 +411,7 @@ export default function SubReports() {
           const mode = getScheduleMode(cp);
           if (mode === 'default') {
             const cpPrefDays = cp.preferred_days;
-            const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null && cpPrefDays.length > 0) ? cpPrefDays : (c.preferred_days || []);
+            const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
             return effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
           }
           
@@ -486,7 +486,7 @@ export default function SubReports() {
             const mode = getScheduleMode(cp);
             if (mode === 'default') {
               const cpPrefDays = cp.preferred_days;
-              const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null && cpPrefDays.length > 0) ? cpPrefDays : (c.preferred_days || []);
+              const effectivePrefDays = (cpPrefDays !== undefined && cpPrefDays !== null) ? cpPrefDays : (c.preferred_days || []);
               const isScheduled = effectivePrefDays.length === 0 || effectivePrefDays.includes(tomorrowDayIdx);
               if (isScheduled) {
                 const freq = cp.frequency || 1;
