@@ -156,10 +156,10 @@ export default function Subscribed() {
           }
           
           if (cp.salad_schedules && Object.keys(cp.salad_schedules).length > 0) {
-            return Object.values(cp.salad_schedules).some((days: any) => {
-              if (!Array.isArray(days)) return false;
-              return days.length === 0 || days.includes(tomorrowDayIdx);
-            });
+            const schedArrays = Object.values(cp.salad_schedules).filter((v: any) => Array.isArray(v)) as number[][];
+            if (schedArrays.length > 0) {
+              return schedArrays.some((days: number[]) => days.length === 0 || days.includes(tomorrowDayIdx));
+            }
           }
 
           const cpPrefDays = cp.preferred_days;
