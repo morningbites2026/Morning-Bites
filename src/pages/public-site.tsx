@@ -39,34 +39,51 @@ export default function PublicSite() {
 
   // Dynamic Regular Items from Supabase (is_active === true and category === 'daily')
   const regularMenuItems = useMemo(() => {
-    const fromDb = menuItems.filter(m => (m.category || "daily") === "daily" && m.is_active);
-    if (fromDb.length === 0) return FALLBACK_REGULAR;
+    const fromDb = (menuItems || []).filter(m => (m?.category || "daily") === "daily" && m?.is_active);
+    if (!fromDb || fromDb.length === 0) return FALLBACK_REGULAR;
     return fromDb.map(item => {
-      const optionText = item.options && item.options.length > 0
-        ? item.options.map(o => o.name).filter(n => n.toLowerCase() !== "regular").join(" / ") || "1 Serving"
-        : "1 Serving";
+      let optionText = "1 Serving";
+      if (Array.isArray(item?.options) && item.options.length > 0) {
+        const validOptions = item.options
+          .map((o: any) => (typeof o === "string" ? o : (o && typeof o.name === "string" ? o.name : "")))
+          .filter((n: string) => n.trim().length > 0 && n.trim().toLowerCase() !== "regular");
+        if (validOptions.length > 0) {
+          optionText = validOptions.join(" / ");
+        }
+      }
       return {
-        name: item.name,
+        name: item?.name || "Menu Item",
         option: optionText,
-        desc: item.description || "Prepared fresh every morning with clean ingredients and homemade taste."
+        desc: item?.description || "Prepared fresh every morning with clean ingredients and homemade taste."
       };
     });
   }, [menuItems]);
 
   // Dynamic Specials from Supabase (is_active === true and category === 'week_special')
   const specialMenuItems = useMemo(() => {
-    const fromDb = menuItems.filter(m => (m.category || "daily") === "week_special" && m.is_active);
-    if (fromDb.length === 0) return FALLBACK_SPECIALS;
+    const fromDb = (menuItems || []).filter(m => (m?.category || "daily") === "week_special" && m?.is_active);
+    if (!fromDb || fromDb.length === 0) return FALLBACK_SPECIALS;
     return fromDb.map(item => {
-      const daysText = (item.week_days || []).map(d => DAY_LABELS[d]).filter(Boolean).join(", ") || "Special";
-      const optionText = item.options && item.options.length > 0
-        ? item.options.map(o => o.name).filter(n => n.toLowerCase() !== "regular").join(" / ") || daysText
-        : daysText;
+      const daysText = Array.isArray(item?.week_days)
+        ? item.week_days
+            .map((d: any) => DAY_LABELS[Number(d)] || (typeof d === "string" ? d : ""))
+            .filter(Boolean)
+            .join(", ") || "Special"
+        : "Special";
+      let optionText = daysText;
+      if (Array.isArray(item?.options) && item.options.length > 0) {
+        const validOptions = item.options
+          .map((o: any) => (typeof o === "string" ? o : (o && typeof o.name === "string" ? o.name : "")))
+          .filter((n: string) => n.trim().length > 0 && n.trim().toLowerCase() !== "regular");
+        if (validOptions.length > 0) {
+          optionText = validOptions.join(" / ");
+        }
+      }
       return {
-        name: item.name,
+        name: item?.name || "Special Delicacy",
         day: daysText,
         option: optionText,
-        desc: item.description || "Authentic regional delicacy prepared on specific days of the week."
+        desc: item?.description || "Authentic regional delicacy prepared on specific days of the week."
       };
     });
   }, [menuItems]);
