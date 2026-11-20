@@ -37,8 +37,8 @@ export function Layout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-50 flex flex-col" style={{ background: 'linear-gradient(135deg, #1a5c2a 0%, #2d8a45 100%)' }}>
         <div className="flex items-center justify-between px-4 pt-4 pb-2 md:px-8">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center shadow-md">
-              <Leaf className="w-5 h-5 text-primary" />
+            <div className="w-10 h-10 rounded-xl bg-white p-0.5 flex items-center justify-center shadow-md shrink-0">
+              <img src="/morning-bites-logo.jpg" alt="Morning Bites Logo" className="w-full h-full object-contain rounded-lg" />
             </div>
             <h1 className="text-2xl font-bold font-serif tracking-wide text-white">Morning Bites</h1>
           </div>

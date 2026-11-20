@@ -1,6 +1,5 @@
 import { useState, useEffect, ReactNode } from "react";
-import { Link } from "wouter";
-import { Lock, ArrowLeft, AlertCircle } from "lucide-react";
+import { ArrowLeft, AlertCircle } from "lucide-react";
 
 export const STAFF_PIN_STORAGE_KEY = "morning_bites_staff_auth";
 export const DEFAULT_STAFF_PIN = "1234";
@@ -70,8 +69,8 @@ export function AdminGuard({ children }: { children: ReactNode }) {
         
         {/* LOGO & BRAND */}
         <div className="flex flex-col items-center gap-2">
-          <div className="w-14 h-14 rounded-2xl bg-[#1e4d2b] text-white flex items-center justify-center shadow-lg shadow-emerald-950/20">
-            <Lock className="w-7 h-7 text-amber-400" />
+          <div className="w-24 h-24 rounded-2xl bg-white p-2 flex items-center justify-center shadow-md border border-[#e5d8c3]">
+            <img src="/morning-bites-logo.jpg" alt="Morning Bites Logo" className="w-full h-full object-contain" />
           </div>
           <div className="pt-1">
             <div className="flex items-center justify-center gap-1">

@@ -123,15 +123,11 @@ export default function PublicSite() {
           
           {/* LOGO */}
           <a href="#menu-card" className="flex items-center gap-3 group">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-emerald-700 p-0.5 shadow-md flex items-center justify-center group-hover:scale-105 transition-transform">
-              <div className="w-full h-full bg-[#faf5ee] rounded-[14px] flex flex-col items-center justify-center p-1">
-                <svg className="w-4 h-4 text-amber-500 -mb-0.5" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="12" r="5" />
-                  <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-                </svg>
-                <span className="text-[9px] font-black font-serif text-[#1e4d2b] leading-tight tracking-tight">MB</span>
-              </div>
-            </div>
+            <img
+              src="/morning-bites-logo.jpg"
+              alt="Morning Bites Logo"
+              className="w-12 h-12 sm:w-14 sm:h-14 object-contain rounded-2xl group-hover:scale-105 transition-transform bg-white p-1 border border-[#e5d8c3] shadow-sm"
+            />
             <div>
               <div className="flex items-baseline gap-1">
                 <span className="text-xl sm:text-2xl font-bold font-serif text-[#e36414] leading-none">Morning</span>
@@ -168,38 +164,13 @@ export default function PublicSite() {
       <section className="py-12 sm:py-16 text-center relative overflow-hidden">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-6">
           
-          {/* EMBLEM BASED ON USER'S CARD */}
-          <div className="inline-flex flex-col items-center justify-center p-6 bg-white/70 backdrop-blur-sm rounded-3xl border-2 border-[#e5d8c3] shadow-md max-w-sm mx-auto">
-            <div className="relative flex flex-col items-center">
-              
-              {/* SUNBURST */}
-              <svg className="w-16 h-10 text-amber-500 drop-shadow-sm" viewBox="0 0 100 50">
-                <circle cx="50" cy="50" r="28" fill="#F59E0B" />
-                <polygon points="50,6 46,24 54,24" fill="#F59E0B" />
-                <polygon points="25,14 36,28 42,22" fill="#F59E0B" />
-                <polygon points="75,14 58,22 64,28" fill="#F59E0B" />
-                <polygon points="8,32 28,34 30,26" fill="#F59E0B" />
-                <polygon points="92,32 70,26 72,34" fill="#F59E0B" />
-              </svg>
-
-              {/* LAUREL OVAL */}
-              <div className="relative px-8 py-2 -mt-4 border-2 border-[#1e4d2b] rounded-[40px] bg-white shadow-inner flex flex-col items-center">
-                <span className="text-3xl sm:text-4xl font-serif font-bold text-[#e36414] tracking-tight leading-none">
-                  Morning
-                </span>
-                <div className="flex items-center gap-1 -mt-1">
-                  <span className="text-3xl sm:text-4xl font-serif font-black text-[#1e4d2b] tracking-tight leading-none">
-                    Bites
-                  </span>
-                  <span className="text-lg text-emerald-600">🌿</span>
-                </div>
-              </div>
-
-              {/* BANNER RIBBON */}
-              <div className="relative -mt-2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white font-black text-[11px] uppercase tracking-wider py-1 px-5 rounded-md shadow-md transform rotate-[-0.5deg]">
-                Healthy Start, Happy Heart!
-              </div>
-            </div>
+          {/* OFFICIAL EMBLEM / LOGO */}
+          <div className="inline-flex flex-col items-center justify-center p-4 sm:p-6 bg-white/90 backdrop-blur-sm rounded-3xl border-2 border-[#e5d8c3] shadow-lg max-w-xs sm:max-w-sm mx-auto group hover:shadow-xl transition-all">
+            <img
+              src="/morning-bites-logo.jpg"
+              alt="Morning Bites Official Logo"
+              className="w-64 sm:w-80 h-auto object-contain mx-auto transition-transform group-hover:scale-[1.02]"
+            />
           </div>
 
           <div className="space-y-3 pt-2">
@@ -489,12 +460,19 @@ export default function PublicSite() {
       <footer className="bg-[#241305] text-[#e5d8c3] py-12 border-t-4 border-[#1e4d2b]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-8 border-b border-white/10 text-center md:text-left">
-            <div>
-              <div className="flex items-center justify-center md:justify-start gap-2">
-                <span className="text-2xl font-serif font-bold text-amber-400">Morning</span>
-                <span className="text-2xl font-serif font-bold text-emerald-400">Bites</span>
+            <div className="flex items-center justify-center md:justify-start gap-3">
+              <img
+                src="/morning-bites-logo.jpg"
+                alt="Morning Bites Logo"
+                className="w-12 h-12 object-contain rounded-xl bg-white p-1 shrink-0"
+              />
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xl font-serif font-bold text-amber-400">Morning</span>
+                  <span className="text-xl font-serif font-bold text-emerald-400">Bites</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">Healthy Start, Happy Heart! • Akota, Vadodara</p>
               </div>
-              <p className="text-xs text-slate-400 mt-1">Healthy Start, Happy Heart! • Akota, Vadodara</p>
             </div>
 
             <div className="flex items-center gap-4">
