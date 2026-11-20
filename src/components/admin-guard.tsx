@@ -1,4 +1,5 @@
 import { useState, useEffect, ReactNode } from "react";
+import { Link } from "wouter";
 import { ArrowLeft, AlertCircle } from "lucide-react";
 
 export const STAFF_PIN_STORAGE_KEY = "morning_bites_staff_auth";
