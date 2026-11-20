@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useStore } from "@/lib/store";
 import { dbIns, dbUpd, formatIST, getPromotionHistory, ActivityLog } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
@@ -95,6 +96,25 @@ export default function Promotions() {
         <Button onClick={() => setIsModalOpen(true)} className="rounded-full shadow-md">
           <Plus className="w-4 h-4 mr-1" /> Create
         </Button>
+      </div>
+
+      {/* HOMEPAGE 50-50 BANNER LINK CARD */}
+      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <ImageIcon className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Public Website 50-50 Hero Banner</h3>
+            <p className="text-xs text-slate-500">Post occasion pictures (Diwali, Uttarayan, Sunday) & custom greetings on the main page.</p>
+          </div>
+        </div>
+        <Link
+          href="/banner"
+          className="inline-flex items-center justify-center bg-[#1e4d2b] hover:bg-[#163c22] text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-sm whitespace-nowrap"
+        >
+          Manage Banner &rarr;
+        </Link>
       </div>
 
       <div className="space-y-3 pb-8">

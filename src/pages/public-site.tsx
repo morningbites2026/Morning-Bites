@@ -1,8 +1,17 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useStore } from "@/lib/store";
 import { isStaffUnlocked } from "@/components/admin-guard";
-import { Lock, MapPin, Phone, MessageCircle, Clock, Sparkles, ShieldCheck } from "lucide-react";
+import {
+  fetchRemoteBannerSettings,
+  getLocalBannerSettings,
+  DEFAULT_BANNER_IMAGE,
+  DEFAULT_BANNER_BADGE,
+  DEFAULT_BANNER_TITLE,
+  DEFAULT_BANNER_TEXT,
+  BannerSettings,
+} from "@/lib/banner-settings";
+import { Lock, MapPin, Phone, MessageCircle, Clock, Sparkles, ShieldCheck, Edit3 } from "lucide-react";
 
 const DAY_LABELS: Record<number, string> = {
   0: "Monday",
@@ -36,6 +45,31 @@ const FALLBACK_SPECIALS = [
 export default function PublicSite() {
   const { menuItems } = useStore();
   const staffUnlocked = isStaffUnlocked();
+
+  const [bannerSettings, setBannerSettings] = useState<BannerSettings>(() => getLocalBannerSettings());
+
+  useEffect(() => {
+    let mounted = true;
+    fetchRemoteBannerSettings().then(remote => {
+      if (mounted) setBannerSettings(remote);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const hasCustomImage = Boolean(bannerSettings.imageUrl && bannerSettings.imageUrl.trim().length > 0);
+  const hasCustomText = Boolean(bannerSettings.text && bannerSettings.text.trim().length > 0);
+  const hasCustomTitle = Boolean(bannerSettings.title && bannerSettings.title.trim().length > 0);
+  const hasCustomBadge = Boolean(bannerSettings.badge && bannerSettings.badge.trim().length > 0);
+
+  // Fallback Logic:
+  // If no image is set -> show default logo
+  const bannerImage = hasCustomImage ? bannerSettings.imageUrl.trim() : DEFAULT_BANNER_IMAGE;
+  // If no text is set -> show suggested default text
+  const bannerText = hasCustomText ? bannerSettings.text.trim() : DEFAULT_BANNER_TEXT;
+  const bannerTitle = hasCustomTitle ? bannerSettings.title.trim() : DEFAULT_BANNER_TITLE;
+  const bannerBadge = hasCustomBadge ? bannerSettings.badge.trim() : DEFAULT_BANNER_BADGE;
 
   // Dynamic Regular Items from Supabase (is_active === true and category === 'daily')
   const regularMenuItems = useMemo(() => {
@@ -160,45 +194,90 @@ export default function PublicSite() {
         </div>
       </header>
 
-      {/* HERO / BRAND EMBLEM */}
-      <section className="py-12 sm:py-16 text-center relative overflow-hidden">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-6">
-          
-          {/* OFFICIAL EMBLEM / LOGO */}
-          <div className="inline-flex flex-col items-center justify-center p-4 sm:p-6 bg-white/90 backdrop-blur-sm rounded-3xl border-2 border-[#e5d8c3] shadow-lg max-w-xs sm:max-w-sm mx-auto group hover:shadow-xl transition-all">
-            <img
-              src="/morning-bites-logo.jpg"
-              alt="Morning Bites Official Logo"
-              className="w-64 sm:w-80 h-auto object-contain mx-auto transition-transform group-hover:scale-[1.02]"
-            />
-          </div>
-
-          <div className="space-y-3 pt-2">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold font-serif text-[#3b1e08]">
-              Traditional Taste, Daily Freshness.
-            </h1>
-            <p className="text-slate-600 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
-              Wholesome sprout salads, piping-hot methi theplas, tawa parathas, and traditional Gujarati specials delivered fresh every morning in Akota, Vadodara.
-            </p>
+      {/* HERO BANNER - 50/50 COMPONENT (LEFT: IMAGE / LOGO, RIGHT: TEXT / ANNOUNCEMENT) */}
+      <section className="py-8 sm:py-14 relative overflow-hidden">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center">
             
-            <div className="inline-flex items-center gap-2 bg-[#f4ebe1] border border-[#d6c4ae] px-4 py-2 rounded-full text-xs font-semibold text-[#3b1e08]">
-              <MapPin className="w-4 h-4 text-red-600" />
-              <span>Akota Garden, Near Radha Krishna Circle, Akota, Vadodara</span>
+            {/* LEFT SIDE (50%): BANNER / OCCASION IMAGE (FALLBACK TO LOGO) */}
+            <div className="flex flex-col items-center justify-center">
+              <div className="w-full max-w-md bg-white/95 backdrop-blur-sm rounded-3xl p-4 sm:p-6 border-2 border-[#e5d8c3] shadow-xl group hover:shadow-2xl transition-all duration-300 flex items-center justify-center min-h-[260px] sm:min-h-[320px] max-h-[420px] overflow-hidden">
+                <img
+                  src={bannerImage}
+                  alt={bannerTitle}
+                  className="w-full h-auto max-h-[360px] object-contain mx-auto transition-transform duration-300 group-hover:scale-[1.02]"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = DEFAULT_BANNER_IMAGE;
+                  }}
+                />
+              </div>
+
+              {/* Staff Edit Shortcut */}
+              {staffUnlocked && (
+                <div className="mt-2.5">
+                  <Link
+                    href="/banner"
+                    className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded-full border border-amber-300 transition shadow-xs"
+                  >
+                    <Edit3 className="w-3 h-3 text-amber-700" />
+                    <span>Edit Banner in Admin</span>
+                  </Link>
+                </div>
+              )}
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2 text-xs font-bold">
-            <span className="bg-white/80 border border-[#e5d8c3] px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-emerald-700" /> 6:30 AM – 9:00 AM Delivery
-            </span>
-            <span className="bg-white/80 border border-[#e5d8c3] px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" /> 100% Pure Veg & Clean
-            </span>
-            <span className="bg-white/80 border border-[#e5d8c3] px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5 text-emerald-700" /> 9099172237 / 9429929822
-            </span>
-          </div>
+            {/* RIGHT SIDE (50%): BANNER TEXT / ANNOUNCEMENT (FALLBACK TO DEFAULT TEXT) */}
+            <div className="flex flex-col justify-center space-y-4 text-center md:text-left">
+              <div>
+                <span className="inline-flex items-center gap-1.5 bg-[#f4ebe1] border border-[#d6c4ae] px-4 py-1.5 rounded-full text-xs font-bold text-[#3b1e08] shadow-xs">
+                  {bannerBadge}
+                </span>
+              </div>
 
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold font-serif text-[#3b1e08] leading-[1.15]">
+                {bannerTitle}
+              </h1>
+
+              <p className="text-slate-600 text-sm sm:text-base leading-relaxed whitespace-pre-line max-w-xl">
+                {bannerText}
+              </p>
+
+              {/* Location pill */}
+              <div className="pt-1 flex justify-center md:justify-start">
+                <div className="inline-flex items-center gap-2 bg-[#f4ebe1] border border-[#d6c4ae] px-3.5 py-1.5 rounded-full text-xs font-semibold text-[#3b1e08]">
+                  <MapPin className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <span>Akota Garden, Near Radha Krishna Circle, Akota, Vadodara</span>
+                </div>
+              </div>
+
+              {/* Highlight chips */}
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-2.5 pt-1 text-xs font-bold text-slate-700">
+                <span className="bg-white/90 border border-[#e5d8c3] px-3 py-1.5 rounded-full shadow-xs flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-emerald-700" /> 6:30 AM – 9:00 AM Delivery
+                </span>
+                <span className="bg-white/90 border border-[#e5d8c3] px-3 py-1.5 rounded-full shadow-xs flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" /> 100% Pure Veg & Clean
+                </span>
+                <span className="bg-white/90 border border-[#e5d8c3] px-3 py-1.5 rounded-full shadow-xs flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-emerald-700" /> 9099172237 / 9429929822
+                </span>
+              </div>
+
+              {/* Order WhatsApp button */}
+              <div className="pt-2 flex justify-center md:justify-start">
+                <a
+                  href="https://wa.me/919099172237?text=Hi%20Morning%20Bites,%20I%20would%20like%20to%20order!"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 bg-[#1e4d2b] hover:bg-[#163c22] text-[#faf5ee] font-bold text-sm px-6 py-3 rounded-full shadow-md transition transform hover:-translate-y-0.5"
+                >
+                  <MessageCircle className="w-4 h-4 text-green-400" />
+                  <span>Order via WhatsApp &rarr;</span>
+                </a>
+              </div>
+            </div>
+
+          </div>
         </div>
       </section>
 

@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useStore } from "@/lib/store";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutDashboard, Receipt, BarChart2, CalendarDays, Users, Leaf, TrendingUp, Package, UtensilsCrossed, Megaphone, ClipboardList, Menu, X, IndianRupee, Globe, Lock, KeyRound, ShieldCheck } from "lucide-react";
+import { Search, LayoutDashboard, Receipt, BarChart2, CalendarDays, Users, Leaf, TrendingUp, Package, UtensilsCrossed, Megaphone, ClipboardList, Menu, X, IndianRupee, Globe, Lock, KeyRound, ShieldCheck, ImageIcon } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
 import { lockStaffPortal } from "@/components/admin-guard";
@@ -18,6 +18,7 @@ const tabs = [
   { path: "/sub-reports", label: "Sub Reports", icon: TrendingUp },
   { path: "/packages", label: "Packages", icon: Package },
   { path: "/menu", label: "Menu", icon: UtensilsCrossed },
+  { path: "/banner", label: "Banner", icon: ImageIcon },
   { path: "/promotions", label: "Promotions", icon: Megaphone },
   { path: "/recipe-costing", label: "Expenses", icon: IndianRupee },
 ];
