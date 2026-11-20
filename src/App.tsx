@@ -4,8 +4,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { StoreProvider } from "@/lib/store";
 import { Layout } from "@/components/layout";
+import { AdminGuard } from "@/components/admin-guard";
 import NotFound from "@/pages/not-found";
 
+import PublicSite from "@/pages/public-site";
 import Dashboard from "@/pages/dashboard";
 import Billing from "@/pages/billing";
 import Preorder from "@/pages/preorder";
@@ -24,24 +26,34 @@ const queryClient = new QueryClient();
 
 function Router() {
   return (
-    <Layout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/billing" component={Billing} />
-        <Route path="/preorder" component={Preorder} />
-        <Route path="/bill-reports" component={BillReports} />
-        <Route path="/sub-dashboard" component={SubDashboard} />
-        <Route path="/walkins" component={Walkins} />
-        <Route path="/subscribed" component={Subscribed} />
-        <Route path="/subscriber/:id" component={SubscriberDetail} />
-        <Route path="/sub-reports" component={SubReports} />
-        <Route path="/packages" component={Packages} />
-        <Route path="/menu" component={Menu} />
-        <Route path="/promotions" component={Promotions} />
-        <Route path="/recipe-costing" component={RecipeCosting} />
-        <Route component={NotFound} />
-      </Switch>
-    </Layout>
+    <Switch>
+      {/* Public Customer Website (Open to all, zero prices, dynamic menu, no PIN needed) */}
+      <Route path="/" component={PublicSite} />
+
+      {/* Staff & Admin Management Portal (Protected by 4-digit PIN) */}
+      <Route>
+        <AdminGuard>
+          <Layout>
+            <Switch>
+              <Route path="/dashboard" component={Dashboard} />
+              <Route path="/billing" component={Billing} />
+              <Route path="/preorder" component={Preorder} />
+              <Route path="/bill-reports" component={BillReports} />
+              <Route path="/sub-dashboard" component={SubDashboard} />
+              <Route path="/walkins" component={Walkins} />
+              <Route path="/subscribed" component={Subscribed} />
+              <Route path="/subscriber/:id" component={SubscriberDetail} />
+              <Route path="/sub-reports" component={SubReports} />
+              <Route path="/packages" component={Packages} />
+              <Route path="/menu" component={Menu} />
+              <Route path="/promotions" component={Promotions} />
+              <Route path="/recipe-costing" component={RecipeCosting} />
+              <Route component={NotFound} />
+            </Switch>
+          </Layout>
+        </AdminGuard>
+      </Route>
+    </Switch>
   );
 }
 

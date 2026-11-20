@@ -1,12 +1,13 @@
 import { Link, useLocation } from "wouter";
 import { useStore } from "@/lib/store";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutDashboard, Receipt, BarChart2, CalendarDays, Users, Leaf, TrendingUp, Package, UtensilsCrossed, Megaphone, ClipboardList, Menu, X, IndianRupee } from "lucide-react";
+import { Search, LayoutDashboard, Receipt, BarChart2, CalendarDays, Users, Leaf, TrendingUp, Package, UtensilsCrossed, Megaphone, ClipboardList, Menu, X, IndianRupee, Globe, Lock } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
+import { lockStaffPortal } from "@/components/admin-guard";
 
 const tabs = [
-  { path: "/", label: "Dashboard", icon: LayoutDashboard },
+  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/billing", label: "Billing", icon: Receipt },
   { path: "/preorder", label: "Preorder", icon: ClipboardList },
   { path: "/bill-reports", label: "Bill Reports", icon: BarChart2 },
@@ -41,13 +42,31 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
             <h1 className="text-2xl font-bold font-serif tracking-wide text-white">Morning Bites</h1>
           </div>
-          <div className={cn(
-            "text-xs font-bold px-3 py-1.5 rounded-full border",
-            isLoading ? "bg-white/10 text-white/70 border-white/20" :
-              error ? "bg-red-500/20 text-red-200 border-red-400/30" :
-                "bg-white/15 text-white border-white/25"
-          )}>
-            {isLoading ? "Connecting..." : error ? "Error" : "ONLINE"}
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center gap-1 transition"
+              title="View Public Customer Menu"
+            >
+              <Globe className="w-3 h-3 text-amber-300" />
+              <span className="hidden sm:inline">Public Menu</span>
+            </Link>
+            <button
+              onClick={lockStaffPortal}
+              className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-100 flex items-center gap-1 border border-red-400/30 transition cursor-pointer"
+              title="Lock Staff Portal"
+            >
+              <Lock className="w-3 h-3" />
+              <span>Lock</span>
+            </button>
+            <div className={cn(
+              "text-xs font-bold px-3 py-1 rounded-full border hidden sm:block",
+              isLoading ? "bg-white/10 text-white/70 border-white/20" :
+                error ? "bg-red-500/20 text-red-200 border-red-400/30" :
+                  "bg-white/15 text-white border-white/25"
+            )}>
+              {isLoading ? "Connecting..." : error ? "Error" : "ONLINE"}
+            </div>
           </div>
         </div>
 
