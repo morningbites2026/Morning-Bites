@@ -57,10 +57,10 @@ export function Layout({ children }: { children: ReactNode }) {
             <button
               onClick={() => setChangePinOpen(true)}
               className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center gap-1 transition cursor-pointer"
-              title="Change Staff PIN"
+              title="Change Staff PIN or Master Admin Password"
             >
               <KeyRound className="w-3 h-3 text-amber-300" />
-              <span className="hidden sm:inline">Change PIN</span>
+              <span className="hidden sm:inline">Security / Passwords</span>
             </button>
             <button
               onClick={lockStaffPortal}
@@ -213,7 +213,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 className="w-full flex items-center gap-3 px-5 py-4 text-sm font-semibold border-b border-border/50 text-foreground hover:bg-muted/50 transition-colors text-left cursor-pointer"
               >
                 <ShieldCheck className="w-5 h-5 text-amber-600" />
-                <span>Change Staff PIN</span>
+                <span>Security & Passwords</span>
               </button>
             </div>
           </div>

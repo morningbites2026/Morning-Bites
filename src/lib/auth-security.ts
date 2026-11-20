@@ -418,6 +418,67 @@ export async function resetPinWithAdminPasscode(passcode: string): Promise<{ suc
   }
 }
 
+// Update Master Admin Passcode
+export async function updateMasterAdminPasscode(
+  currentPasscode: string,
+  newPasscode: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!newPasscode || newPasscode.trim().length < 4) {
+    return { success: false, error: "New Admin Password must be at least 4 characters." };
+  }
+
+  if (currentPasscode.trim() === newPasscode.trim()) {
+    return { success: false, error: "New password cannot be identical to current password." };
+  }
+
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/site_settings?key=eq.admin_passcode&select=*`;
+    const res = await fetch(url, {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+    });
+
+    let validPasscode = "admin123";
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data[0]?.value) {
+        validPasscode = data[0].value;
+      }
+    }
+
+    if (currentPasscode.trim() !== validPasscode) {
+      return { success: false, error: "Current Master Admin Password is incorrect." };
+    }
+
+    // Save updated passcode
+    const saveRes = await fetch(`${SUPABASE_URL}/rest/v1/site_settings`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify({
+        key: "admin_passcode",
+        value: newPasscode.trim(),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+
+    if (!saveRes.ok) {
+      const text = await saveRes.text();
+      return { success: false, error: "Failed to update admin password: " + text };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to update admin password." };
+  }
+}
+
 // Session Helpers
 export function isStaffUnlocked(): boolean {
   try {
