@@ -22,6 +22,7 @@ import Packages from "@/pages/packages";
 import Menu from "@/pages/menu";
 import Promotions from "@/pages/promotions";
 import BannerManager from "@/pages/banner-manager";
+import SiteSettings from "@/pages/site-settings";
 import RecipeCosting from "@/pages/recipe-costing";
 
 interface ErrorBoundaryProps {
@@ -103,6 +104,7 @@ function Router() {
               <Route path="/banner" component={BannerManager} />
               <Route path="/promotions" component={Promotions} />
               <Route path="/recipe-costing" component={RecipeCosting} />
+              <Route path="/site-settings" component={SiteSettings} />
               <Route component={NotFound} />
             </Switch>
           </Layout>

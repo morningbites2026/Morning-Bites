@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { dbIns, dbUpd, dbDel } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
@@ -10,8 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Edit, Trash2, Tag, UtensilsCrossed, Star } from "lucide-react";
+import { Plus, Edit, Trash2, Tag, UtensilsCrossed, Star, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  getLocalPublicConfig,
+  fetchRemotePublicConfig,
+  toggleMenuItemPublicVisibility,
+} from "@/lib/public-settings";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -33,6 +38,30 @@ export default function Menu() {
 
   const dailyItems = menuItems.filter(m => (m.category || 'daily') === 'daily').sort((a, b) => a.sort_order - b.sort_order);
   const weekSpecialItems = menuItems.filter(m => (m.category || 'daily') === 'week_special').sort((a, b) => a.sort_order - b.sort_order);
+
+  const [publicMenuIds, setPublicMenuIds] = useState<number[] | undefined>(() => getLocalPublicConfig().publicMenuIds);
+
+  useEffect(() => {
+    fetchRemotePublicConfig().then(cfg => {
+      setPublicMenuIds(cfg.publicMenuIds);
+    });
+  }, []);
+
+  const isItemPublic = (id: number) => {
+    if (!publicMenuIds) return true;
+    return publicMenuIds.includes(id);
+  };
+
+  const handleTogglePublic = async (id: number) => {
+    const allIds = menuItems.map(m => m.id);
+    const isNowPublic = await toggleMenuItemPublicVisibility(id, allIds);
+    const updated = getLocalPublicConfig().publicMenuIds;
+    setPublicMenuIds(updated);
+    toast({
+      title: isNowPublic ? "Item Visible on Public Website" : "Item Hidden from Public Website",
+      description: isNowPublic ? "Customers can now view this dish on the website." : "This dish is now hidden from the public website.",
+    });
+  };
 
   const handleOpenNew = () => {
     setEditingId(null);
@@ -162,17 +191,39 @@ export default function Menu() {
                   ))}
                 </div>
               </div>
-              <div className="flex flex-col items-end gap-3">
-                <Switch
-                  checked={item.is_active}
-                  onCheckedChange={() => handleToggleActive(item.id, item.is_active)}
-                  className="data-[state=checked]:bg-green-500"
-                />
-                <div className="flex gap-2">
-                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-full" onClick={() => handleOpenEdit(item)}>
+              <div className="flex flex-col items-end gap-2.5 shrink-0">
+                {/* 1. POS Active Switch */}
+                <div className="flex items-center gap-1.5" title="Available in POS / Cashier Billing">
+                  <span className="text-[10px] text-muted-foreground font-semibold">POS</span>
+                  <Switch
+                    checked={item.is_active}
+                    onCheckedChange={() => handleToggleActive(item.id, item.is_active)}
+                    className="data-[state=checked]:bg-green-500 scale-90"
+                  />
+                </div>
+
+                {/* 2. Public Website Toggle Button (Requested by User) */}
+                <button
+                  type="button"
+                  onClick={() => handleTogglePublic(item.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold transition shadow-xs cursor-pointer border select-none",
+                    isItemPublic(item.id)
+                      ? "bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200"
+                      : "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200"
+                  )}
+                  title={isItemPublic(item.id) ? "Item is displayed on Public Website" : "Item is hidden from Public Website"}
+                >
+                  <Globe className={cn("w-3 h-3", isItemPublic(item.id) ? "text-emerald-700" : "text-slate-400")} />
+                  <span>{isItemPublic(item.id) ? "Website: ON" : "Website: OFF"}</span>
+                </button>
+
+                {/* Edit & Delete Buttons */}
+                <div className="flex gap-1.5 pt-0.5">
+                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleOpenEdit(item)}>
                     <Edit className="w-3 h-3" />
                   </Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-full text-destructive hover:bg-destructive/10 border-destructive/30" onClick={() => handleDelete(item.id)}>
+                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full text-destructive hover:bg-destructive/10 border-destructive/30" onClick={() => handleDelete(item.id)}>
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>

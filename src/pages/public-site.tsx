@@ -11,7 +11,24 @@ import {
   DEFAULT_BANNER_TEXT,
   BannerSettings,
 } from "@/lib/banner-settings";
-import { Lock, MapPin, Phone, MessageCircle, Clock, Sparkles, ShieldCheck, Edit3 } from "lucide-react";
+import {
+  getLocalPublicConfig,
+  fetchRemotePublicConfig,
+  isMenuItemShownOnPublic,
+  cleanPhoneNumber,
+  PublicSiteConfig,
+} from "@/lib/public-settings";
+import {
+  MapPin,
+  Phone,
+  MessageCircle,
+  Clock,
+  Sparkles,
+  ShieldCheck,
+  Edit3,
+  Globe,
+} from "lucide-react";
+import { InstagramIcon, FacebookIcon } from "@/components/social-icons";
 
 const DAY_LABELS: Record<number, string> = {
   0: "Monday",
@@ -47,16 +64,26 @@ export default function PublicSite() {
   const staffUnlocked = isStaffUnlocked();
 
   const [bannerSettings, setBannerSettings] = useState<BannerSettings>(() => getLocalBannerSettings());
+  const [publicConfig, setPublicConfig] = useState<PublicSiteConfig>(() => getLocalPublicConfig());
 
   useEffect(() => {
     let mounted = true;
     fetchRemoteBannerSettings().then(remote => {
       if (mounted) setBannerSettings(remote);
     });
+    fetchRemotePublicConfig().then(cfg => {
+      if (mounted) setPublicConfig(cfg);
+    });
     return () => {
       mounted = false;
     };
   }, []);
+
+  // Designated WhatsApp number & links
+  const whatsAppPhone = publicConfig.phones.find(p => p.isWhatsApp) || publicConfig.phones[0];
+  const whatsAppNumberClean = whatsAppPhone ? cleanPhoneNumber(whatsAppPhone.number) : "919099172237";
+  const whatsAppOrderUrl = `https://wa.me/${whatsAppNumberClean}?text=${encodeURIComponent("Hi Morning Bites, I want to order fresh breakfast!")}`;
+  const phonesDisplay = publicConfig.phones.map(p => p.number).filter(Boolean).join(" / ") || "9099172237 / 9429929822";
 
   const hasCustomImage = Boolean(bannerSettings.imageUrl && bannerSettings.imageUrl.trim().length > 0);
   const hasCustomText = Boolean(bannerSettings.text && bannerSettings.text.trim().length > 0);
@@ -71,9 +98,11 @@ export default function PublicSite() {
   const bannerTitle = hasCustomTitle ? bannerSettings.title.trim() : DEFAULT_BANNER_TITLE;
   const bannerBadge = hasCustomBadge ? bannerSettings.badge.trim() : DEFAULT_BANNER_BADGE;
 
-  // Dynamic Regular Items from Supabase (is_active === true and category === 'daily')
+  // Dynamic Regular Items from Supabase (is_active === true and category === 'daily' and enabled on public site)
   const regularMenuItems = useMemo(() => {
-    const fromDb = (menuItems || []).filter(m => (m?.category || "daily") === "daily" && m?.is_active);
+    const fromDb = (menuItems || []).filter(
+      m => (m?.category || "daily") === "daily" && m?.is_active && isMenuItemShownOnPublic(m.id, publicConfig.publicMenuIds)
+    );
     if (!fromDb || fromDb.length === 0) return FALLBACK_REGULAR;
     return fromDb.map(item => {
       let optionText = "1 Serving";
@@ -91,11 +120,13 @@ export default function PublicSite() {
         desc: item?.description || "Prepared fresh every morning with clean ingredients and homemade taste."
       };
     });
-  }, [menuItems]);
+  }, [menuItems, publicConfig.publicMenuIds]);
 
-  // Dynamic Specials from Supabase (is_active === true and category === 'week_special')
+  // Dynamic Specials from Supabase (is_active === true and category === 'week_special' and enabled on public site)
   const specialMenuItems = useMemo(() => {
-    const fromDb = (menuItems || []).filter(m => (m?.category || "daily") === "week_special" && m?.is_active);
+    const fromDb = (menuItems || []).filter(
+      m => (m?.category || "daily") === "week_special" && m?.is_active && isMenuItemShownOnPublic(m.id, publicConfig.publicMenuIds)
+    );
     if (!fromDb || fromDb.length === 0) return FALLBACK_SPECIALS;
     return fromDb.map(item => {
       const daysText = Array.isArray(item?.week_days)
@@ -120,7 +151,7 @@ export default function PublicSite() {
         desc: item?.description || "Authentic regional delicacy prepared on specific days of the week."
       };
     });
-  }, [menuItems]);
+  }, [menuItems, publicConfig.publicMenuIds]);
 
   return (
     <div className="min-h-screen bg-[#faf5ee] text-[#3b1e08] font-sans antialiased selection:bg-amber-200 selection:text-amber-900">
@@ -146,7 +177,7 @@ export default function PublicSite() {
         <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
         <span>Akota, Vadodara • Fresh Breakfast & Daily Salad Subscriptions • <strong>6:30 AM – 9:00 AM</strong></span>
         <span className="hidden md:inline text-amber-200">|</span>
-        <a href="https://wa.me/919099172237?text=Hi%20Morning%20Bites,%20I%20want%20to%20order!" target="_blank" rel="noreferrer" className="hidden md:inline font-bold underline hover:text-amber-300 transition">
+        <a href={whatsAppOrderUrl} target="_blank" rel="noreferrer" className="hidden md:inline font-bold underline hover:text-amber-300 transition">
           Order via WhatsApp &rarr;
         </a>
       </div>
@@ -179,10 +210,32 @@ export default function PublicSite() {
             <a href="#location" className="hover:text-[#e36414] transition">Location</a>
           </nav>
 
-          {/* WHATSAPP ACTION BUTTON */}
-          <div className="flex items-center gap-3">
+          {/* ACTIONS & SOCIAL */}
+          <div className="flex items-center gap-2.5">
+            {publicConfig.social.instagram?.trim() && (
+              <a
+                href={publicConfig.social.instagram}
+                target="_blank"
+                rel="noreferrer"
+                className="w-9 h-9 rounded-full bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 hidden sm:flex items-center justify-center transition shadow-xs"
+                title="Follow us on Instagram"
+              >
+                <InstagramIcon className="w-4 h-4" />
+              </a>
+            )}
+            {publicConfig.social.facebook?.trim() && (
+              <a
+                href={publicConfig.social.facebook}
+                target="_blank"
+                rel="noreferrer"
+                className="w-9 h-9 rounded-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 hidden sm:flex items-center justify-center transition shadow-xs"
+                title="Follow us on Facebook"
+              >
+                <FacebookIcon className="w-4 h-4" />
+              </a>
+            )}
             <a
-              href="https://wa.me/919099172237?text=Hi%20Morning%20Bites,%20I%20would%20like%20to%20order!"
+              href={whatsAppOrderUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 bg-[#1e4d2b] hover:bg-[#163c22] text-[#faf5ee] font-bold text-xs sm:text-sm px-4 sm:px-5 py-2.5 rounded-full shadow-md transition transform hover:-translate-y-0.5"
@@ -259,14 +312,14 @@ export default function PublicSite() {
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" /> 100% Pure Veg & Clean
                 </span>
                 <span className="bg-white/90 border border-[#e5d8c3] px-3 py-1.5 rounded-full shadow-xs flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-emerald-700" /> 9099172237 / 9429929822
+                  <Phone className="w-3.5 h-3.5 text-emerald-700" /> {phonesDisplay}
                 </span>
               </div>
 
               {/* Order WhatsApp button */}
               <div className="pt-2 flex justify-center md:justify-start">
                 <a
-                  href="https://wa.me/919099172237?text=Hi%20Morning%20Bites,%20I%20would%20like%20to%20order!"
+                  href={whatsAppOrderUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-2 bg-[#1e4d2b] hover:bg-[#163c22] text-[#faf5ee] font-bold text-sm px-6 py-3 rounded-full shadow-md transition transform hover:-translate-y-0.5"
@@ -425,7 +478,7 @@ export default function PublicSite() {
                 </ul>
               </div>
               <a
-                href="https://wa.me/919099172237?text=Hi%20Morning%20Bites,%20please%20share%20details%20for%20the%20Sprouts%20Salad%2010-Meal%20Subscription"
+                href={`https://wa.me/${whatsAppNumberClean}?text=${encodeURIComponent("Hi Morning Bites, please share details for the Sprouts Salad 10-Meal Subscription")}`}
                 target="_blank"
                 rel="noreferrer"
                 className="w-full text-center bg-[#1e4d2b] hover:bg-[#163c22] text-[#faf5ee] font-bold text-xs py-3.5 rounded-xl transition shadow"
@@ -456,7 +509,7 @@ export default function PublicSite() {
                 </ul>
               </div>
               <a
-                href="https://wa.me/919099172237?text=Hi%20Morning%20Bites,%20please%20share%20details%20for%20the%20Rotating%20Combo%20Salad%20Pack"
+                href={`https://wa.me/${whatsAppNumberClean}?text=${encodeURIComponent("Hi Morning Bites, please share details for the Rotating Combo Salad Pack")}`}
                 target="_blank"
                 rel="noreferrer"
                 className="w-full text-center bg-amber-400 hover:bg-amber-300 text-[#3b1e08] font-black text-xs py-3.5 rounded-xl transition shadow-lg"
@@ -484,7 +537,7 @@ export default function PublicSite() {
                 </ul>
               </div>
               <a
-                href="https://wa.me/919099172237?text=Hi%20Morning%20Bites,%20I%20want%20to%20inquire%20about%20Office/Bulk%20Breakfast%20orders"
+                href={`https://wa.me/${whatsAppNumberClean}?text=${encodeURIComponent("Hi Morning Bites, I want to inquire about Office/Bulk Breakfast orders")}`}
                 target="_blank"
                 rel="noreferrer"
                 className="w-full text-center bg-[#1e4d2b] hover:bg-[#163c22] text-[#faf5ee] font-bold text-xs py-3.5 rounded-xl transition shadow"
@@ -498,14 +551,14 @@ export default function PublicSite() {
         </div>
       </section>
 
-      {/* LOCATION & CONTACT SECTION */}
-      <section id="location" className="py-16 bg-[#faf5ee] border-t border-[#e5d8c3]">
+      {/* LOCATION & SOCIAL PRESENCE SECTION */}
+      <section id="location" className="py-14 bg-[#faf5ee] border-t border-[#e5d8c3]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-6">
           <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-2xl mx-auto shadow-sm">
             <MapPin className="w-6 h-6" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-serif font-extrabold text-[#3b1e08]">Visit or Order from Us</h2>
+            <h2 className="text-2xl sm:text-3xl font-serif font-extrabold text-[#3b1e08]">Visit Us at Akota Garden</h2>
             <p className="text-sm text-slate-600 font-medium">
               Akota Garden, Near Radha Krishna Circle, Akota, Vadodara, Gujarat
             </p>
@@ -514,31 +567,70 @@ export default function PublicSite() {
             </p>
           </div>
 
+          {/* DYNAMIC SOCIAL & LOCATION BUTTONS (ONLY DISPLAY IF CONFIGURED IN ADMIN) */}
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-            <a
-              href="https://wa.me/919099172237?text=Hi%20Morning%20Bites,%20please%20share%20your%20location"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 bg-[#1e4d2b] text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:bg-[#163c22] transition shadow"
-            >
-              <MessageCircle className="w-4 h-4 text-green-400" />
-              <span>WhatsApp: 9099172237</span>
-            </a>
-            <a
-              href="tel:9429929822"
-              className="inline-flex items-center gap-2 bg-white text-[#3b1e08] border border-slate-300 text-xs font-bold px-5 py-2.5 rounded-xl hover:bg-slate-50 transition shadow-sm"
-            >
-              <Phone className="w-4 h-4 text-[#1e4d2b]" />
-              <span>Call: 9429929822</span>
-            </a>
+            {publicConfig.social.googleMaps?.trim() && (
+              <a
+                href={publicConfig.social.googleMaps}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 bg-white text-[#3b1e08] border border-slate-300 text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-50 transition shadow-sm"
+              >
+                <MapPin className="w-4 h-4 text-red-600" />
+                <span>Get Directions</span>
+              </a>
+            )}
+            {publicConfig.social.googlePage?.trim() && (
+              <a
+                href={publicConfig.social.googlePage}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 bg-white text-[#3b1e08] border border-slate-300 text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-50 transition shadow-sm"
+              >
+                <Globe className="w-4 h-4 text-amber-600" />
+                <span>Google Reviews</span>
+              </a>
+            )}
+            {publicConfig.social.instagram?.trim() && (
+              <a
+                href={publicConfig.social.instagram}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 bg-pink-50 text-pink-800 border border-pink-200 text-xs font-bold px-4 py-2 rounded-xl hover:bg-pink-100 transition shadow-xs"
+              >
+                <InstagramIcon className="w-4 h-4 text-pink-600" />
+                <span>Instagram</span>
+              </a>
+            )}
+            {publicConfig.social.facebook?.trim() && (
+              <a
+                href={publicConfig.social.facebook}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 bg-blue-50 text-blue-800 border border-blue-200 text-xs font-bold px-4 py-2 rounded-xl hover:bg-blue-100 transition shadow-xs"
+              >
+                <FacebookIcon className="w-4 h-4 text-blue-600" />
+                <span>Facebook</span>
+              </a>
+            )}
+            {publicConfig.phones.map(p => (
+              <a
+                key={p.id}
+                href={`tel:${p.number.replace(/\D/g, "")}`}
+                className="inline-flex items-center gap-2 bg-white text-[#3b1e08] border border-slate-300 text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-50 transition shadow-sm"
+              >
+                <Phone className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Call: {p.number} {p.label ? `(${p.label})` : ""}</span>
+              </a>
+            ))}
           </div>
         </div>
       </section>
 
       {/* FOOTER */}
-      <footer className="bg-[#241305] text-[#e5d8c3] py-12 border-t-4 border-[#1e4d2b]">
+      <footer className="bg-[#241305] text-[#e5d8c3] py-10 border-t-4 border-[#1e4d2b]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-8 border-b border-white/10 text-center md:text-left">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-6 border-b border-white/10 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-3">
               <img
                 src="/morning-bites-logo.jpg"
@@ -554,14 +646,52 @@ export default function PublicSite() {
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg border border-white/10 transition"
-              >
-                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                <span>Staff Portal</span>
-              </Link>
+            {/* DYNAMIC SOCIAL ICONS IN FOOTER (ONLY RENDER IF LINK IS SET) */}
+            <div className="flex items-center gap-2.5">
+              {publicConfig.social.googleMaps?.trim() && (
+                <a
+                  href={publicConfig.social.googleMaps}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#e5d8c3] hover:text-white flex items-center justify-center transition"
+                  title="Google Maps Location"
+                >
+                  <MapPin className="w-4 h-4 text-red-400" />
+                </a>
+              )}
+              {publicConfig.social.googlePage?.trim() && (
+                <a
+                  href={publicConfig.social.googlePage}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#e5d8c3] hover:text-white flex items-center justify-center transition"
+                  title="Google Business & Reviews"
+                >
+                  <Globe className="w-4 h-4 text-amber-400" />
+                </a>
+              )}
+              {publicConfig.social.instagram?.trim() && (
+                <a
+                  href={publicConfig.social.instagram}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#e5d8c3] hover:text-white flex items-center justify-center transition"
+                  title="Instagram"
+                >
+                  <InstagramIcon className="w-4 h-4 text-pink-400" />
+                </a>
+              )}
+              {publicConfig.social.facebook?.trim() && (
+                <a
+                  href={publicConfig.social.facebook}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#e5d8c3] hover:text-white flex items-center justify-center transition"
+                  title="Facebook"
+                >
+                  <FacebookIcon className="w-4 h-4 text-blue-400" />
+                </a>
+              )}
             </div>
           </div>
 
