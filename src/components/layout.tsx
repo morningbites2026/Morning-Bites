@@ -1,10 +1,11 @@
 import { Link, useLocation } from "wouter";
 import { useStore } from "@/lib/store";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutDashboard, Receipt, BarChart2, CalendarDays, Users, Leaf, TrendingUp, Package, UtensilsCrossed, Megaphone, ClipboardList, Menu, X, IndianRupee, Globe, Lock } from "lucide-react";
+import { Search, LayoutDashboard, Receipt, BarChart2, CalendarDays, Users, Leaf, TrendingUp, Package, UtensilsCrossed, Megaphone, ClipboardList, Menu, X, IndianRupee, Globe, Lock, KeyRound, ShieldCheck } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
 import { lockStaffPortal } from "@/components/admin-guard";
+import { ChangePinModal } from "@/components/change-pin-modal";
 
 const tabs = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -27,6 +28,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { customers, walkins, isLoading, error, searchQuery, setSearchQuery } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [changePinOpen, setChangePinOpen] = useState(false);
 
   const activeSubs = customers.filter(c => c.status === 'active');
   const lowMeals = activeSubs.filter(c => (c.total - c.used) <= 2 && c.used < c.total).length;
@@ -51,6 +53,14 @@ export function Layout({ children }: { children: ReactNode }) {
               <Globe className="w-3 h-3 text-amber-300" />
               <span className="hidden sm:inline">Public Menu</span>
             </Link>
+            <button
+              onClick={() => setChangePinOpen(true)}
+              className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center gap-1 transition cursor-pointer"
+              title="Change Staff PIN"
+            >
+              <KeyRound className="w-3 h-3 text-amber-300" />
+              <span className="hidden sm:inline">Change PIN</span>
+            </button>
             <button
               onClick={lockStaffPortal}
               className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-100 flex items-center gap-1 border border-red-400/30 transition cursor-pointer"
@@ -194,6 +204,16 @@ export function Layout({ children }: { children: ReactNode }) {
                   </Link>
                 );
               })}
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  setChangePinOpen(true);
+                }}
+                className="w-full flex items-center gap-3 px-5 py-4 text-sm font-semibold border-b border-border/50 text-foreground hover:bg-muted/50 transition-colors text-left cursor-pointer"
+              >
+                <ShieldCheck className="w-5 h-5 text-amber-600" />
+                <span>Change Staff PIN</span>
+              </button>
             </div>
           </div>
         </div>
@@ -202,6 +222,8 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="flex-1 overflow-y-auto p-4 md:p-6 md:max-w-5xl md:mx-auto md:w-full flex flex-col gap-4">
         {children}
       </main>
+
+      <ChangePinModal open={changePinOpen} onOpenChange={setChangePinOpen} />
     </div>
   );
 }
